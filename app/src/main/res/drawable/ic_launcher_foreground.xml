@@ -9,23 +9,23 @@
         android:pathData="M22,54 Q54,28 86,54 Q54,80 22,54 Z"
         android:strokeWidth="4"
         android:strokeLineJoin="round"
-        android:strokeColor="#3DD6C6"
+        android:strokeColor="#D8C7A0"
         android:fillColor="#00000000" />
     <!-- Iris -->
     <path
         android:pathData="M54,54m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0"
         android:strokeWidth="3"
-        android:strokeColor="#3DD6C6"
+        android:strokeColor="#D8C7A0"
         android:fillColor="#00000000" />
     <!-- Pupille : unité de baie (U) -->
     <path
         android:pathData="M48,48h12v12h-12z"
-        android:fillColor="#FFB547" />
+        android:fillColor="#C48E5E" />
     <!-- Graduations de rack -->
     <path
         android:pathData="M30,40v4M30,64v4M78,40v4M78,64v4"
         android:strokeWidth="2.5"
         android:strokeLineCap="round"
-        android:strokeColor="#FFB547"
+        android:strokeColor="#C48E5E"
         android:fillColor="#00000000" />
 </vector>

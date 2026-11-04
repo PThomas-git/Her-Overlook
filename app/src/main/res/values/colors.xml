@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ink">#0B1620</color>
-    <color name="fibre">#3DD6C6</color>
-    <color name="signal">#FFB547</color>
+    <color name="ink">#110F0D</color>
+    <color name="paper">#F3EBDC</color>
+    <color name="sand">#D8C7A0</color>
+    <color name="copper">#C48E5E</color>
+    <color name="window_bg">@color/paper</color>
 </resources>

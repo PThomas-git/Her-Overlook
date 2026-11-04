@@ -12,6 +12,12 @@ documents présents, usagers, photos, synthèse par site. Export ZIP (JSON + CSV
 1. Obtainium → *Ajouter une application* → `https://github.com/PThomas-git/Her-Overlook`
 2. Les mises à jour sont publiées à chaque tag `vX.Y.Z` (voir ci-dessous).
 
+## Journal (log)
+
+L'appli garde un journal local (démarrages, navigation, photos, export, GPS, erreurs) et enregistre la pile d'appels en cas de crash.
+Menu ⋮ de l'accueil → **Partager le log** (mail, Drive, messagerie) ou **Enregistrer le log (fichier)**.
+Le journal est aussi inclus dans l'export ZIP (`journal.log`).
+
 ## Publier une version
 
 ```bash

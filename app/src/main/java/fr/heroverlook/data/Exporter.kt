@@ -32,6 +32,7 @@ object Exporter {
             put("checklist.csv", checklistCsv(sorted))
             put("baies_equipements.csv", racksCsv(sorted))
             put("amenagement.csv", layoutCsv(sorted))
+            put("journal.log", String(AppLog.bytes(), Charsets.UTF_8))
 
             for (s in sorted) {
                 val base = "sites/${SiteStore.safeName(s.id)}"

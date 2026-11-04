@@ -4,6 +4,8 @@ package fr.heroverlook.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,6 +87,9 @@ fun HomeScreen(vm: AppVM) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.export(uri)
     }
+    val logLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) vm.saveLog(uri)
+    }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             val text = runCatching {
@@ -130,6 +135,11 @@ fun HomeScreen(vm: AppVM) {
                                 menu = false
                                 importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream", "*/*"))
                             })
+                            DropdownMenuItem(text = { Text("Partager le log") }, onClick = { menu = false; vm.shareLog(ctx) })
+                            DropdownMenuItem(text = { Text("Enregistrer le log (fichier)") }, onClick = {
+                                menu = false
+                                logLauncher.launch("HerOverlook_log_${SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())}.txt")
+                            })
                             DropdownMenuItem(text = { Text("Ajouter un site de démo") }, onClick = { menu = false; vm.loadDemo() })
                             DropdownMenuItem(text = { Text("Retirer le site de démo") }, onClick = { menu = false; vm.deleteDemo() })
                         }
@@ -166,7 +176,7 @@ fun HomeScreen(vm: AppVM) {
                 if (all.isEmpty()) {
                     item { EmptyState(vm, onImport = { importLauncher.launch(arrayOf("*/*")) }) }
                 }
-                items(shown, key = { it.id }) { s -> SiteCard(s) { vm.go("site/${s.id}") } }
+                items(shown, key = { it.id }) { s -> SiteCard(s, Modifier.animateItem()) { vm.go("site/${s.id}") } }
             }
             vm.busy?.let { msg ->
                 Box(Modifier.fillMaxSize().background(Color(0x99000000)), contentAlignment = Alignment.Center) {
@@ -189,10 +199,9 @@ private fun Overview(all: List<Site>) {
     val photos = all.sumOf { it.allPhotos().size }
     Panel(accent = MaterialTheme.colorScheme.primary) {
         Text("Tournée", style = MaterialTheme.typography.titleMedium)
-        LinearProgressIndicator(
-            progress = { if (all.isEmpty()) 0f else done.toFloat() / all.size },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        val target = if (all.isEmpty()) 0f else done.toFloat() / all.size
+        val shown by animateFloatAsState(target, tween(800), label = "overview")
+        LinearProgressIndicator(progress = { shown }, modifier = Modifier.fillMaxWidth())
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Counter("${done}/${all.size}", "terminés")
             Counter("$doing", "en cours")
@@ -226,9 +235,10 @@ private fun EmptyState(vm: AppVM, onImport: () -> Unit) {
 }
 
 @Composable
-private fun SiteCard(s: Site, onClick: () -> Unit) {
+private fun SiteCard(s: Site, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val st = s.stats()
-    Panel(accent = statusColor(s.status), onClick = onClick) {
+    val progress by animateFloatAsState(st.progress, tween(700), label = "siteProgress")
+    Panel(modifier = modifier, accent = statusColor(s.status), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             KindBadge(s.kind)
             Text(s.id, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -251,7 +261,7 @@ private fun SiteCard(s: Site, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        LinearProgressIndicator(progress = { st.progress }, modifier = Modifier.fillMaxWidth())
+        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("${st.answered}/${st.total} points", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (st.reserve > 0) Text("${st.reserve} réserve(s)", style = MaterialTheme.typography.labelMedium, color = Verdict.RESERVE.color())

@@ -2,6 +2,7 @@
 
 package fr.heroverlook.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -187,29 +188,31 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, "Déplier")
             }
         }
-        if (open) {
-            ChoiceChips(EquipmentTypes.all, e.type) { t -> upd { it.copy(type = t) } }
-            Field("Type (libre)", e.type, { t -> upd { it.copy(type = t) } })
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Field("Marque", e.brand, { t -> upd { it.copy(brand = t) } }, Modifier.weight(1f))
-                Field("Modèle", e.model, { t -> upd { it.copy(model = t) } }, Modifier.weight(1f))
-            }
-            Field("N° de série", e.serial, { t -> upd { it.copy(serial = t.trim()) } }, mono = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Field("Mise en service", e.commissioningDate, { t -> upd { it.copy(commissioningDate = t) } }, Modifier.weight(1f))
-                Field("N° de licence", e.license, { t -> upd { it.copy(license = t) } }, Modifier.weight(1f), mono = true)
-            }
-            Field("Usager / service porté", e.usager, { t -> upd { it.copy(usager = t) } })
-            Field("Commentaire", e.comment, { t -> upd { it.copy(comment = t) } }, singleLine = false, minLines = 2)
-            PhotoStrip(
-                siteId = siteId, tag = "${rackTag}_equip", photos = e.photos,
-                onAdd = { p -> upd { it.copy(photos = it.photos + p) } },
-                onRemove = { p -> upd { it.copy(photos = it.photos - p) } },
-                label = "Photos (étiquette n° de série, face avant)",
-            )
-            TextButton(onClick = { updRack { r -> r.copy(equipments = r.equipments.filter { it.id != e.id }) } }) {
-                Icon(Icons.Outlined.Delete, null)
-                Text("  Supprimer cet équipement")
+        AnimatedVisibility(visible = open) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ChoiceChips(EquipmentTypes.all, e.type) { t -> upd { it.copy(type = t) } }
+                Field("Type (libre)", e.type, { t -> upd { it.copy(type = t) } })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Field("Marque", e.brand, { t -> upd { it.copy(brand = t) } }, Modifier.weight(1f))
+                    Field("Modèle", e.model, { t -> upd { it.copy(model = t) } }, Modifier.weight(1f))
+                }
+                Field("N° de série", e.serial, { t -> upd { it.copy(serial = t.trim()) } }, mono = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Field("Mise en service", e.commissioningDate, { t -> upd { it.copy(commissioningDate = t) } }, Modifier.weight(1f))
+                    Field("N° de licence", e.license, { t -> upd { it.copy(license = t) } }, Modifier.weight(1f), mono = true)
+                }
+                Field("Usager / service porté", e.usager, { t -> upd { it.copy(usager = t) } })
+                Field("Commentaire", e.comment, { t -> upd { it.copy(comment = t) } }, singleLine = false, minLines = 2)
+                PhotoStrip(
+                    siteId = siteId, tag = "${rackTag}_equip", photos = e.photos,
+                    onAdd = { p -> upd { it.copy(photos = it.photos + p) } },
+                    onRemove = { p -> upd { it.copy(photos = it.photos - p) } },
+                    label = "Photos (étiquette n° de série, face avant)",
+                )
+                TextButton(onClick = { updRack { r -> r.copy(equipments = r.equipments.filter { it.id != e.id }) } }) {
+                    Icon(Icons.Outlined.Delete, null)
+                    Text("  Supprimer cet équipement")
+                }
             }
         }
     }

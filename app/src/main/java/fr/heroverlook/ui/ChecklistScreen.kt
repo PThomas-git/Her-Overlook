@@ -2,6 +2,7 @@
 
 package fr.heroverlook.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -108,16 +109,18 @@ private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
             }
         }
-        if (open) {
-            if (item.valueLabel != null) {
-                Field(item.valueLabel, e.value, { t -> vm.setEntry(siteId, item.id) { it.copy(value = t) } })
+        AnimatedVisibility(visible = open) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (item.valueLabel != null) {
+                    Field(item.valueLabel, e.value, { t -> vm.setEntry(siteId, item.id) { it.copy(value = t) } })
+                }
+                Field("Commentaire", e.comment, { t -> vm.setEntry(siteId, item.id) { it.copy(comment = t) } }, singleLine = false, minLines = 2)
+                PhotoStrip(
+                    siteId = siteId, tag = item.id, photos = e.photos,
+                    onAdd = { p -> vm.setEntry(siteId, item.id) { it.copy(photos = it.photos + p) } },
+                    onRemove = { p -> vm.setEntry(siteId, item.id) { it.copy(photos = it.photos - p) } },
+                )
             }
-            Field("Commentaire", e.comment, { t -> vm.setEntry(siteId, item.id) { it.copy(comment = t) } }, singleLine = false, minLines = 2)
-            PhotoStrip(
-                siteId = siteId, tag = item.id, photos = e.photos,
-                onAdd = { p -> vm.setEntry(siteId, item.id) { it.copy(photos = it.photos + p) } },
-                onRemove = { p -> vm.setEntry(siteId, item.id) { it.copy(photos = it.photos - p) } },
-            )
         }
     }
 }

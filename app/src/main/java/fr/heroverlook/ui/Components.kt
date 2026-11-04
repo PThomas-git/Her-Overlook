@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -28,8 +27,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -57,6 +64,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -66,6 +74,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -78,6 +89,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.ItemKind
 import fr.heroverlook.data.Photos
 import fr.heroverlook.data.SiteKind
@@ -134,7 +146,11 @@ fun Screen(
     }
 }
 
-/** Carte avec liseré gauche (rappel des montants de baie 19"). */
+/**
+ * Carte avec liseré gauche (rappel des montants de baie 19").
+ * Le liseré est dessiné avec drawBehind : surtout pas de IntrinsicSize ici, car les LazyRow
+ * (bandes de photos) ne supportent pas les mesures intrinsèques et feraient planter l'écran.
+ */
 @Composable
 fun Panel(
     modifier: Modifier = Modifier,
@@ -142,28 +158,51 @@ fun Panel(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val inner: @Composable () -> Unit = {
-        Row(Modifier.height(IntrinsicSize.Min)) {
-            if (accent != null) Box(Modifier.width(5.dp).fillMaxHeight().background(accent))
-            Column(
-                Modifier.weight(1f).padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                content = content,
-            )
+    val shape = RoundedCornerShape(18.dp)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        if (pressed) 0.97f else 1f,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "panelPress",
+    )
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val enter by animateFloatAsState(if (shown) 1f else 0f, tween(380, easing = FastOutSlowInEasing), label = "panelEnter")
+    val bar by animateColorAsState(accent ?: Color.Transparent, tween(300), label = "panelAccent")
+
+    val look = modifier
+        .fillMaxWidth()
+        .graphicsLayer {
+            alpha = enter
+            translationY = (1f - enter) * 14.dp.toPx()
+            scaleX = pressScale
+            scaleY = pressScale
         }
+    val inner: @Composable () -> Unit = {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .animateContentSize(tween(260, easing = FastOutSlowInEasing))
+                .drawBehind { if (bar.alpha > 0f) drawRect(bar, size = Size(4.dp.toPx(), size.height)) }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content,
+        )
     }
     if (onClick != null) {
         Surface(
             onClick = onClick,
-            modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            modifier = look,
+            shape = shape,
             color = MaterialTheme.colorScheme.surfaceContainer,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            interactionSource = interaction,
         ) { inner() }
     } else {
         Surface(
-            modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
+            modifier = look,
+            shape = shape,
             color = MaterialTheme.colorScheme.surfaceContainer,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) { inner() }
@@ -227,25 +266,44 @@ fun Field(
 fun VerdictBar(value: Verdict, kind: ItemKind, onChange: (Verdict) -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         listOf(Verdict.OK, Verdict.RESERVE, Verdict.NC, Verdict.NA).forEach { v ->
-            val selected = value == v
-            val c = v.color()
-            Surface(
-                onClick = { onChange(if (selected) Verdict.UNSET else v) },
-                modifier = Modifier.weight(1f).height(54.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = if (selected) c else Color.Transparent,
-                border = BorderStroke(1.5.dp, if (selected) c else MaterialTheme.colorScheme.outline),
-                contentColor = if (selected) onVerdictColor() else MaterialTheme.colorScheme.onSurfaceVariant,
-            ) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(v.icon(), contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text(v.shortLabel(kind), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                }
-            }
+            VerdictButton(
+                v, kind, selected = value == v,
+                onClick = { onChange(if (value == v) Verdict.UNSET else v) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun VerdictButton(v: Verdict, kind: ItemKind, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    val c = v.color()
+    val colorSpec = tween<Color>(240)
+    val bg by animateColorAsState(if (selected) c else c.copy(alpha = 0f), colorSpec, label = "verdictBg")
+    val border by animateColorAsState(if (selected) c else MaterialTheme.colorScheme.outline, colorSpec, label = "verdictBorder")
+    val fg by animateColorAsState(
+        if (selected) onVerdictColor() else MaterialTheme.colorScheme.onSurfaceVariant, colorSpec, label = "verdictFg",
+    )
+    val scale by animateFloatAsState(
+        if (selected) 1.05f else 1f,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "verdictScale",
+    )
+    Surface(
+        onClick = onClick,
+        modifier = modifier.height(54.dp).graphicsLayer { scaleX = scale; scaleY = scale },
+        shape = RoundedCornerShape(12.dp),
+        color = bg,
+        border = BorderStroke(1.5.dp, border),
+        contentColor = fg,
+    ) {
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(v.icon(), contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(v.shortLabel(kind), style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
@@ -300,19 +358,28 @@ fun rememberPhotoTaker(siteId: String, tag: String, onTaken: (String) -> Unit): 
         if (rel != null) {
             val f = Photos.abs(ctx, rel)
             if (ok && f.exists() && f.length() > 0) {
+                AppLog.i("photo", "Prise de vue OK : ${f.name}")
                 thread {
                     Photos.compress(f)
                     Handler(Looper.getMainLooper()).post { currentOnTaken(rel) }
                 }
             } else {
+                AppLog.w("photo", "Prise de vue annulée ou vide : ${f.name} (ok=$ok)")
                 f.delete()
             }
         }
     }
     return {
-        val f = Photos.newFile(ctx, siteId, tag)
-        pending = Photos.rel(ctx, f)
-        launcher.launch(Photos.uriFor(ctx, f))
+        try {
+            val f = Photos.newFile(ctx, siteId, tag)
+            pending = Photos.rel(ctx, f)
+            AppLog.i("photo", "Ouverture de l'appareil photo ($siteId / $tag)")
+            launcher.launch(Photos.uriFor(ctx, f))
+        } catch (e: Exception) {
+            pending = null
+            AppLog.e("photo", "Impossible d'ouvrir l'appareil photo", e)
+            android.widget.Toast.makeText(ctx, "Appareil photo indisponible : ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 }
 
@@ -320,10 +387,15 @@ fun rememberPhotoTaker(siteId: String, tag: String, onTaken: (String) -> Unit): 
 fun Thumb(rel: String, modifier: Modifier = Modifier, maxSide: Int = 300, contentScale: ContentScale = ContentScale.Crop) {
     val ctx = LocalContext.current
     val bmp by produceState<ImageBitmap?>(null, rel) {
-        value = withContext(Dispatchers.IO) { Photos.decodeSampled(Photos.abs(ctx, rel), maxSide)?.asImageBitmap() }
+        value = withContext(Dispatchers.IO) {
+            runCatching { Photos.decodeSampled(Photos.abs(ctx, rel), maxSide)?.asImageBitmap() }
+                .onFailure { AppLog.e("photo", "Lecture de la miniature impossible : $rel", it) }
+                .getOrNull()
+        }
     }
+    val fade by animateFloatAsState(if (bmp != null) 1f else 0f, tween(350), label = "thumbFade")
     Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-        bmp?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = contentScale) }
+        bmp?.let { Image(it, null, Modifier.fillMaxSize().graphicsLayer { alpha = fade }, contentScale = contentScale) }
     }
 }
 
@@ -343,12 +415,15 @@ fun PhotoStrip(
         if (label != null) {
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
+        Row(
+            Modifier.fillMaxWidth().animateContentSize().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            run {
                 Surface(
                     onClick = take,
                     modifier = Modifier.size(84.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 ) {
@@ -362,8 +437,8 @@ fun PhotoStrip(
                     }
                 }
             }
-            items(photos, key = { it }) { p ->
-                Thumb(p, Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)).clickable { viewing = p })
+            photos.forEach { p ->
+                key(p) { Thumb(p, Modifier.size(84.dp).clip(RoundedCornerShape(10.dp)).clickable { viewing = p }) }
             }
         }
     }

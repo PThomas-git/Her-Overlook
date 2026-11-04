@@ -60,7 +60,8 @@ object Photos {
                 bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
             }
             FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.JPEG, quality, it) }
-        }
+            AppLog.i("photo", "Compressée : ${file.name} (${file.length() / 1024} Ko)")
+        }.onFailure { AppLog.e("photo", "Compression échouée : ${file.name}", it) }
     }
 
     fun decodeSampled(file: File, maxSide: Int): Bitmap? {
@@ -82,10 +83,13 @@ fun requestLocation(ctx: Context, onResult: (String?) -> Unit) {
         else -> null
     }
     if (provider == null) {
+        AppLog.w("gps", "Aucun fournisseur de localisation actif")
         onResult(null)
         return
     }
+    AppLog.i("gps", "Demande de position ($provider)")
     lm.getCurrentLocation(provider, null, ctx.mainExecutor) { loc: Location? ->
+        AppLog.i("gps", if (loc == null) "Position indisponible" else "Position obtenue (±${loc.accuracy.toInt()} m)")
         onResult(
             loc?.let {
                 String.format(Locale.US, "%.6f, %.6f (±%.0f m)", it.latitude, it.longitude, it.accuracy)
