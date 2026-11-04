@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream
  *  - checklist.csv          : une ligne par point de contrôle et par site (y compris non renseignés)
  *  - baies_equipements.csv  : une ligne par équipement (et par baie vide)
  *  - amenagement.csv        : écarts relevés par rapport au plan de référence
- *  - sites/<id>/site.json + sites/<id>/photos/*.jpg
+ *  - sites/(id)/site.json + dossier sites/(id)/photos contenant les JPEG
  */
 object Exporter {
 
