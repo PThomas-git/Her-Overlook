@@ -1,0 +1,17 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+build/
+captures/
+*.jks
+*.keystore
+.DS_Store
+
+# Données client : ne JAMAIS publier (dépôt public)
+/import/
+*.xlsx
+*.xls
+*.dwg
+*.pdf
+*.zip

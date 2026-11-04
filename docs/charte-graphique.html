@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hér'Overlook — charte graphique</title>
+<style>
+  :root{--ink:#0B1620;--panel:#122431;--panel2:#1A3140;--line:#2A4254;--fibre:#3DD6C6;--signal:#FFB547;--mist:#E6EEF2;--mute:#A9BCC8;--ok:#4CD97B;--res:#FFB547;--nc:#FF6B6B}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--mist);font-family:system-ui,Segoe UI,Roboto,sans-serif;line-height:1.5}
+  main{max-width:960px;margin:0 auto;padding:28px 16px 60px}
+  h1{font-size:28px;margin:0 0 4px}
+  h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--fibre);margin:36px 0 12px}
+  p.lead{color:var(--mute);margin:0 0 8px}
+  .row{display:flex;flex-wrap:wrap;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .sw{width:132px}
+  .sw i{display:block;height:56px;border-radius:10px;border:1px solid var(--line);margin-bottom:8px}
+  .sw b{display:block;font-size:13px}
+  .sw span{font:12px ui-monospace,Consolas,monospace;color:var(--mute)}
+  .icons{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .appicon{width:108px;height:108px;border-radius:26px;overflow:hidden}
+  .appicon.round{border-radius:50%}
+  .mono{width:108px;height:108px;border-radius:26px;background:#cfd8dc;display:grid;place-items:center}
+  .glyphs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+  .glyph{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute)}
+  .glyph svg{width:26px;height:26px;stroke:var(--fibre);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  .phone{width:340px;background:var(--ink);border:1px solid var(--line);border-radius:28px;padding:14px;display:flex;flex-direction:column;gap:10px}
+  .site{display:flex;border-radius:14px;overflow:hidden;background:var(--panel);border:1px solid var(--line)}
+  .site .bar{width:5px;background:var(--signal)}
+  .site .bar.done{background:var(--ok)} .site .bar.todo{background:#4A6577}
+  .site .body{padding:12px 14px;flex:1}
+  .tag{font-size:11px;border:1px solid var(--fibre);color:var(--fibre);border-radius:6px;padding:1px 6px;margin-right:6px}
+  .tag.adr{border-color:var(--signal);color:var(--signal)}
+  .id{font:12px ui-monospace,Consolas,monospace;color:var(--mute)}
+  .prog{height:4px;border-radius:2px;background:var(--panel2);margin:8px 0 6px;overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--fibre)}
+  .seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .seg div{border:1.5px solid #4A6577;border-radius:10px;height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:var(--mute)}
+  .seg div.on-ok{background:var(--ok);color:var(--ink);border-color:var(--ok)}
+  .seg div.on-res{background:var(--res);color:var(--ink);border-color:var(--res)}
+  .seg div.on-nc{background:var(--nc);color:#fff;border-color:var(--nc)}
+  .seg svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .note{font-size:13px;color:var(--mute)}
+  ul{margin:6px 0;padding-left:18px;color:var(--mute);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Hér'Overlook</h1>
+  <p class="lead">Poste de supervision de nuit : fond encre, fibre teal pour l'action, ambre signal pour l'attention. Rouge et vert sont réservés aux verdicts de conformité.</p>
+
+  <h2>Icône de l'application</h2>
+  <div class="card icons">
+    <svg class="appicon" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg" aria-label="Icône adaptative">
+      <rect width="108" height="108" fill="#0B1620"/>
+      <path d="M22,54 Q54,28 86,54 Q54,80 22,54 Z" fill="none" stroke="#3DD6C6" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="54" cy="54" r="14" fill="none" stroke="#3DD6C6" stroke-width="3"/>
+      <rect x="48" y="48" width="12" height="12" fill="#FFB547"/>
+      <path d="M30,40v4M30,64v4M78,40v4M78,64v4" stroke="#FFB547" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <svg class="appicon round" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg" aria-label="Icône ronde">
+      <rect width="108" height="108" fill="#0B1620"/>
+      <path d="M22,54 Q54,28 86,54 Q54,80 22,54 Z" fill="none" stroke="#3DD6C6" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="54" cy="54" r="14" fill="none" stroke="#3DD6C6" stroke-width="3"/>
+      <rect x="48" y="48" width="12" height="12" fill="#FFB547"/>
+      <path d="M30,40v4M30,64v4M78,40v4M78,64v4" stroke="#FFB547" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    </svg>
+    <div class="mono">
+      <svg width="84" height="84" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg" aria-label="Icône thématique monochrome">
+        <path d="M22,54 Q54,28 86,54 Q54,80 22,54 Z" fill="none" stroke="#37474f" stroke-width="4" stroke-linejoin="round"/>
+        <circle cx="54" cy="54" r="14" fill="none" stroke="#37474f" stroke-width="3"/>
+        <rect x="48" y="48" width="12" height="12" fill="#37474f"/>
+      </svg>
+    </div>
+    <div class="note" style="max-width:360px">
+      Un œil (« overlook ») dont la pupille est une unité de baie (1 U) carrée, flanquée des graduations d'un montant 19″.
+      Version monochrome fournie pour les icônes thématiques d'Android 13+.
+    </div>
+  </div>
+
+  <h2>Palette</h2>
+  <div class="row">
+    <div class="sw"><i style="background:#0B1620"></i><b>Encre</b><span>#0B1620 · fond</span></div>
+    <div class="sw"><i style="background:#122431"></i><b>Panneau</b><span>#122431 · cartes</span></div>
+    <div class="sw"><i style="background:#1A3140"></i><b>Panneau +</b><span>#1A3140 · relief</span></div>
+    <div class="sw"><i style="background:#3DD6C6"></i><b>Fibre</b><span>#3DD6C6 · action</span></div>
+    <div class="sw"><i style="background:#FFB547"></i><b>Signal</b><span>#FFB547 · attention</span></div>
+    <div class="sw"><i style="background:#4CD97B"></i><b>Conforme</b><span>#4CD97B</span></div>
+    <div class="sw"><i style="background:#FFB547"></i><b>Réserve</b><span>#FFB547</span></div>
+    <div class="sw"><i style="background:#FF6B6B"></i><b>Non conforme</b><span>#FF6B6B</span></div>
+    <div class="sw"><i style="background:#8CA0AE"></i><b>Sans objet</b><span>#8CA0AE</span></div>
+  </div>
+  <p class="note" style="margin-top:12px">Thème clair automatique en plein soleil : mêmes rôles, teal profond #00695F, fond #F2F6F8 et verdicts assombris pour garder le contraste.</p>
+
+  <h2>Icônes d'interface (Material Icons, tracé « outlined »)</h2>
+  <div class="card glyphs">
+    <div class="glyph"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>Accès</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><path d="M4 6h4M4 12h4M4 18h4M11 6h9M11 12h9M11 18h9"/></svg>Check-list</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/></svg>Aménagement</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M5 9h14M5 15h14"/></svg>Baies</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5"/></svg>Documents</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6M15.5 14.2c3 0 5.5 2 5.5 5.3"/></svg>Usagers</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg>Photos</div>
+    <div class="glyph"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 9h8M8 13h8M8 17h5"/></svg>Synthèse</div>
+  </div>
+  <p class="note" style="margin-top:10px">Aucun émoji : toutes les icônes viennent de la bibliothèque Material Icons embarquée dans l'app (vectorielles, nettes à toutes les densités). Les glyphes ci-dessus sont des équivalents de prévisualisation.</p>
+
+  <h2>Aperçu de l'interface</h2>
+  <div class="row">
+    <div class="phone">
+      <div style="font-weight:600;font-size:18px">Hér'Overlook</div>
+      <div class="site"><div class="bar done"></div><div class="body">
+        <span class="tag">POP</span><span class="id">POP-00068-SETE</span>
+        <div style="font-weight:600;margin-top:6px">SETE</div>
+        <div class="note">SETE · RUE DE DUBLIN</div>
+        <div class="prog"><i style="width:100%"></i></div>
+        <div class="note">37/37 points · <span style="color:var(--res)">2 réserve(s)</span> · <span style="color:var(--nc)">1 NC</span></div>
+      </div></div>
+      <div class="site"><div class="bar"></div><div class="body">
+        <span class="tag adr">ADR+</span><span class="id">POP-00103-ARMOIRE CASTELNAU 2000</span>
+        <div style="font-weight:600;margin-top:6px">CASTELNAU 2000</div>
+        <div class="prog"><i style="width:45%"></i></div>
+        <div class="note">14/31 points · <span style="color:var(--res)">1 réserve(s)</span></div>
+      </div></div>
+      <div class="site"><div class="bar todo"></div><div class="body">
+        <span class="tag adr">ADR</span><span class="id">POP-00584-ADR VALERGUES</span>
+        <div style="font-weight:600;margin-top:6px">ADR VALERGUES</div>
+        <div class="prog"><i style="width:0"></i></div>
+        <div class="note">0/31 points</div>
+      </div></div>
+    </div>
+    <div class="phone">
+      <div style="font-weight:600;font-size:18px">Check-list</div>
+      <div class="card" style="padding:12px">
+        <div style="font-weight:600">Batteries</div>
+        <div class="note">Fuite, défaut, date limite dépassée</div>
+        <div class="seg" style="margin-top:10px">
+          <div><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg>Conforme</div>
+          <div class="on-res"><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg>Réserve</div>
+          <div><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>Non conf.</div>
+          <div><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>S.O.</div>
+        </div>
+      </div>
+      <div class="card" style="padding:12px">
+        <div style="font-weight:600">Plan / schéma TGBT</div>
+        <div class="note">Affiché ou présent dans le POP</div>
+        <div class="seg" style="margin-top:10px">
+          <div><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg>Conforme</div>
+          <div><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg>Réserve</div>
+          <div class="on-nc"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>Non conf.</div>
+          <div><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>S.O.</div>
+        </div>
+      </div>
+      <div class="card" style="padding:12px">
+        <div style="font-weight:600">Portail d'accès extérieur</div>
+        <div class="seg" style="margin-top:10px">
+          <div class="on-ok"><svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg>Conforme</div>
+          <div><svg viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v5M12 18v.5"/></svg>Réserve</div>
+          <div><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>Non conf.</div>
+          <div><svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>S.O.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Principes</h2>
+  <ul>
+    <li>Gros boutons (54 dp) pour la saisie à une main ou avec des gants ; verdict en un seul appui.</li>
+    <li>Liseré de couleur à gauche de chaque carte : statut du site ou verdict du point, lisible d'un coup d'œil.</li>
+    <li>Numéros de série et identifiants en police à chasse fixe, saisis en majuscules.</li>
+    <li>Thème sombre par défaut la nuit / en local technique, thème clair automatique en plein jour.</li>
+  </ul>
+</main>
+</body>
+</html>
