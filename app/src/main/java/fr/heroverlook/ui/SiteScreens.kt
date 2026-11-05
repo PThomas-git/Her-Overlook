@@ -49,6 +49,7 @@ import fr.heroverlook.data.ItemKind
 import fr.heroverlook.data.Site
 import fr.heroverlook.data.Verdict
 import fr.heroverlook.data.VisitStatus
+import fr.heroverlook.data.LocationResult
 import fr.heroverlook.data.requestLocation
 import fr.heroverlook.data.stats
 
@@ -174,8 +175,13 @@ fun AccessScreen(vm: AppVM, id: String) {
         locating.value = true
         requestLocation(ctx) { res ->
             locating.value = false
-            if (res == null) vm.toast("Position indisponible (GPS désactivé ?)")
-            else vm.update(id) { it.copy(measuredGps = res) }
+            when (res) {
+                is LocationResult.Ok -> {
+                    vm.update(id) { it.copy(measuredGps = res.text) }
+                    if (res.note != null) vm.toast("Position relevée (${res.note})")
+                }
+                is LocationResult.Fail -> vm.toast(res.reason)
+            }
         }
     }
 

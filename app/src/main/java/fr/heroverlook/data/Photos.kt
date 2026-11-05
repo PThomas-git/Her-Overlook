@@ -75,35 +75,3 @@ object Photos {
         return BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 }
-
-@SuppressLint("MissingPermission")
-fun requestLocation(ctx: Context, onResult: (String?) -> Unit) {
-    val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-    // Le fournisseur GPS exige la permission « précise » : avec la seule permission approximative il lève une
-    // SecurityException (crash). On se rabat alors sur le réseau.
-    val fine = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-    val provider = when {
-        fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-        lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-        else -> null
-    }
-    if (provider == null) {
-        AppLog.w("gps", "Aucun fournisseur de localisation utilisable (précise=$fine)")
-        onResult(null)
-        return
-    }
-    AppLog.i("gps", "Demande de position ($provider)")
-    try {
-        lm.getCurrentLocation(provider, null, ctx.mainExecutor) { loc: Location? ->
-            AppLog.i("gps", if (loc == null) "Position indisponible" else "Position obtenue (±${loc.accuracy.toInt()} m)")
-            onResult(
-                loc?.let {
-                    String.format(Locale.US, "%.6f, %.6f (±%.0f m)", it.latitude, it.longitude, it.accuracy)
-                }
-            )
-        }
-    } catch (e: Exception) {
-        AppLog.e("gps", "Localisation impossible", e)
-        onResult(null)
-    }
-}

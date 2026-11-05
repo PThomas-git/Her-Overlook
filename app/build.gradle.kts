@@ -68,4 +68,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // Lecture de texte (n° de série) : modèle embarqué, fonctionne hors ligne
     implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Position actuelle fiable (GPS + Wi-Fi + réseau), avec repli sur la dernière position connue
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }

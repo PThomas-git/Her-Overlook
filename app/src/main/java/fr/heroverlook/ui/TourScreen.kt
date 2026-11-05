@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Navigation
 import androidx.compose.material.icons.outlined.Directions
@@ -46,6 +48,7 @@ import fr.heroverlook.AppVM
 import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.Site
 import fr.heroverlook.data.VisitStatus
+import fr.heroverlook.data.LocationResult
 import fr.heroverlook.data.requestLocation
 import kotlin.math.PI
 import kotlin.math.asin
@@ -55,7 +58,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private data class Pt(val lat: Double, val lon: Double)
+internal data class Pt(val lat: Double, val lon: Double)
 
 private fun haversineKm(a: Pt, b: Pt): Double {
     val r = 6371.0
@@ -66,7 +69,7 @@ private fun haversineKm(a: Pt, b: Pt): Double {
     return 2 * r * asin(sqrt(h))
 }
 
-private fun pointOf(s: Site) = Pt(s.lat!!, s.lon!!)
+internal fun pointOf(s: Site) = Pt(s.lat!!, s.lon!!)
 
 /**
  * Ordre de visite : plus proche voisin depuis le départ (position actuelle, sinon le site le plus à l'ouest),
@@ -135,13 +138,40 @@ fun TourScreen(vm: AppVM) {
     val all = vm.sites.values.toList()
     val withGps = all.filter { it.lat != null && it.lon != null && (includeDone || it.status != VisitStatus.DONE) }
     val withoutGps = all.filter { it.lat == null || it.lon == null }
-    val route = remember(withGps.map { it.id }, startText) { planRoute(withGps, start) }
+    // Ordre : celui enregistré (modifiable à la main) ; les sites pas encore classés sont ajoutés dans l'ordre calculé.
+    val auto = remember(withGps.map { it.id }, startText) { planRoute(withGps, start) }
+    val route = run {
+        val byId = withGps.associateBy { it.id }
+        val ordered = vm.tourOrder.toList().mapNotNull { byId[it] }
+        ordered + auto.filter { a -> ordered.none { it.id == a.id } }
+    }
+
+    fun optimize(from: Pt?) {
+        vm.setTourOrder(planRoute(withGps, from).map { it.id })
+    }
+
+    fun move(i: Int, delta: Int) {
+        val j = i + delta
+        if (j < 0 || j >= route.size) return
+        val ids = route.map { it.id }.toMutableList()
+        val t = ids[i]
+        ids[i] = ids[j]
+        ids[j] = t
+        vm.setTourOrder(ids)
+    }
 
     fun fetch() {
         locating = true
         requestLocation(ctx) { res ->
             locating = false
-            if (res == null) vm.toast("Position indisponible (GPS désactivé ?)") else startText = res
+            when (res) {
+                is LocationResult.Ok -> {
+                    startText = res.text
+                    optimize(Pt(res.lat, res.lon))
+                    vm.toast("Position : ${res.text}" + (res.note?.let { " — $it" } ?: ""))
+                }
+                is LocationResult.Fail -> vm.toast(res.reason)
+            }
         }
     }
 
@@ -179,10 +209,22 @@ fun TourScreen(vm: AppVM) {
                     Icon(Icons.Outlined.MyLocation, null)
                     Text(if (locating) "  Recherche…" else "  Depuis ma position")
                 }
-                OutlinedButton(onClick = { startText = "" }, modifier = Modifier.weight(1f), enabled = start != null) {
+                OutlinedButton(
+                    onClick = { startText = ""; optimize(null) },
+                    modifier = Modifier.weight(1f),
+                    enabled = start != null,
+                ) {
                     Text("Départ à l'ouest")
                 }
             }
+            OutlinedButton(onClick = { optimize(start) }, modifier = Modifier.fillMaxWidth(), enabled = route.size > 1) {
+                Text("Recalculer l'ordre optimal")
+            }
+            Text(
+                "Ordre modifiable : utilise les flèches ▲ ▼ sur chaque étape. Il est mémorisé.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         if (route.isNotEmpty()) {
@@ -222,13 +264,24 @@ fun TourScreen(vm: AppVM) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = {
-                        try {
-                            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${s.lat},${s.lon}")))
-                        } catch (e: Exception) {
-                            vm.toast("Aucune application de navigation")
+                    Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                        IconButton(onClick = { move(i, -1) }, enabled = i > 0, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.ArrowUpward, "Monter")
                         }
-                    }) { Icon(Icons.Outlined.Navigation, "Itinéraire") }
+                        IconButton(onClick = { move(i, 1) }, enabled = i < route.size - 1, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.ArrowDownward, "Descendre")
+                        }
+                        IconButton(
+                            onClick = {
+                                try {
+                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${s.lat},${s.lon}")))
+                                } catch (e: Exception) {
+                                    vm.toast("Aucune application de navigation")
+                                }
+                            },
+                            modifier = Modifier.size(40.dp),
+                        ) { Icon(Icons.Outlined.Navigation, "Itinéraire") }
+                    }
                 }
             }
         }
@@ -241,80 +294,6 @@ fun TourScreen(vm: AppVM) {
                     Text("Relever la position dans « Accès » du site.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        }
-    }
-}
-
-/** Carte schématique hors ligne : points reliés dans l'ordre de visite (touche un point pour ouvrir le site). */
-@Composable
-private fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
-    val line = MaterialTheme.colorScheme.primary
-    val startColor = MaterialTheme.colorScheme.secondary
-    val ring = MaterialTheme.colorScheme.onBackground
-    val colors = route.map { statusColor(it.status) }
-    val pts = route.map { pointOf(it) }
-
-    // Projection : longitude corrigée par cos(latitude) pour ne pas déformer la carte.
-    val allPts = if (start != null) pts + start else pts
-    val minLat = allPts.minOf { it.lat }
-    val maxLat = allPts.maxOf { it.lat }
-    val minLon = allPts.minOf { it.lon }
-    val maxLon = allPts.maxOf { it.lon }
-    val k = cos((minLat + maxLat) / 2.0 * PI / 180.0)
-    val spanX = max((maxLon - minLon) * k, 1e-6)
-    val spanY = max(maxLat - minLat, 1e-6)
-
-    fun project(p: Pt, w: Float, h: Float, pad: Float): Offset {
-        val scale = min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY).toFloat()
-        val offX = (w - spanX.toFloat() * scale) / 2f
-        val offY = (h - spanY.toFloat() * scale) / 2f
-        val x = offX + ((p.lon - minLon) * k).toFloat() * scale
-        val y = offY + (maxLat - p.lat).toFloat() * scale
-        return Offset(x, y)
-    }
-
-    Panel {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(280.dp)
-                .pointerInput(route) {
-                    detectTapGestures { tap ->
-                        val pad = 28.dp.toPx()
-                        var best = -1
-                        var bestD = 40.dp.toPx()
-                        pts.forEachIndexed { i, p ->
-                            val o = project(p, size.width.toFloat(), size.height.toFloat(), pad)
-                            val d = (o - tap).getDistance()
-                            if (d < bestD) { bestD = d; best = i }
-                        }
-                        if (best >= 0) onOpen(route[best])
-                    }
-                },
-        ) {
-            Canvas(Modifier.fillMaxWidth().height(280.dp)) {
-                val pad = 28.dp.toPx()
-                val offs = pts.map { project(it, size.width, size.height, pad) }
-                val startOff = start?.let { project(it, size.width, size.height, pad) }
-                // tracé
-                val chain = if (startOff != null) listOf(startOff) + offs else offs
-                for (i in 0 until chain.size - 1) {
-                    drawLine(line.copy(alpha = 0.55f), chain[i], chain[i + 1], strokeWidth = 2.dp.toPx())
-                }
-                // points
-                offs.forEachIndexed { i, o ->
-                    drawCircle(colors[i], radius = 8.dp.toPx(), center = o)
-                    drawCircle(ring, radius = 8.dp.toPx(), center = o, style = Stroke(width = 1.5.dp.toPx()))
-                }
-                // départ
-                if (startOff != null) {
-                    drawCircle(startColor, radius = 7.dp.toPx(), center = startOff)
-                    drawCircle(startColor, radius = 13.dp.toPx(), center = startOff, style = Stroke(width = 2.dp.toPx()))
-                }
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("Nord en haut · sans fond de carte (fonctionne hors ligne)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

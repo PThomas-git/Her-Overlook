@@ -33,6 +33,18 @@ import java.util.Locale
 
 class AppVM(app: Application, private val state: SavedStateHandle) : AndroidViewModel(app) {
     private val store = SiteStore(app)
+    private val prefs = app.getSharedPreferences("tour", Context.MODE_PRIVATE)
+
+    /** Ordre de la tournée (ids de sites), modifiable à la main et conservé entre deux lancements. */
+    val tourOrder = mutableStateListOf<String>().apply {
+        addAll((prefs.getString("order", "") ?: "").split("\n").filter { it.isNotBlank() })
+    }
+
+    fun setTourOrder(ids: List<String>) {
+        tourOrder.clear()
+        tourOrder.addAll(ids)
+        prefs.edit().putString("order", ids.joinToString("\n")).apply()
+    }
 
     val sites = mutableStateMapOf<String, Site>()
 
