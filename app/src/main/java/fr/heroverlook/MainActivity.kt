@@ -29,20 +29,33 @@ import fr.heroverlook.ui.ChecklistScreen
 import fr.heroverlook.ui.DocumentsScreen
 import fr.heroverlook.ui.HerTheme
 import fr.heroverlook.ui.HomeScreen
+import fr.heroverlook.ui.KnownScreen
 import fr.heroverlook.ui.LayoutScreen
 import fr.heroverlook.ui.PhotosScreen
 import fr.heroverlook.ui.RackScreen
 import fr.heroverlook.ui.RacksScreen
 import fr.heroverlook.ui.SiteScreen
+import fr.heroverlook.ui.SplashOverlay
 import fr.heroverlook.ui.SummaryScreen
+import fr.heroverlook.ui.TourScreen
 import fr.heroverlook.ui.UsagersScreen
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            HerTheme { AppRoot() }
+            HerTheme {
+                // Animation de lancement : uniquement au démarrage à froid (pas à chaque rotation).
+                var splash by rememberSaveable { mutableStateOf(true) }
+                Box(Modifier.fillMaxSize()) {
+                    AppRoot()
+                    if (splash) SplashOverlay { splash = false }
+                }
+            }
         }
     }
 }
@@ -81,9 +94,11 @@ private fun Route(vm: AppVM, route: String) {
     val parts = route.split("/")
     when {
         parts[0] == "home" -> HomeScreen(vm)
+        parts[0] == "tour" -> TourScreen(vm)
         parts[0] == "site" && parts.size == 2 -> SiteScreen(vm, parts[1])
         parts[0] == "site" && parts.size == 3 -> when (parts[2]) {
             "access" -> AccessScreen(vm, parts[1])
+            "known" -> KnownScreen(vm, parts[1])
             "checklist" -> ChecklistScreen(vm, parts[1])
             "docs" -> DocumentsScreen(vm, parts[1])
             "layout" -> LayoutScreen(vm, parts[1])

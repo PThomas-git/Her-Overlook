@@ -98,6 +98,19 @@ fun SiteScreen(vm: AppVM, id: String) {
             }
         }
 
+        if (s.known.isNotEmpty()) {
+            val todo = s.known.count { it.state == fr.heroverlook.data.KnownState.TODO }
+            Panel(accent = if (todo > 0) MaterialTheme.colorScheme.secondary else Verdict.OK.color(), onClick = { vm.go("site/$id/known") }) {
+                Text("Déjà connu : à valider", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (todo > 0) "$todo information(s) sur ${s.known.size} à confirmer ou corriger avant de commencer"
+                    else "Toutes les informations connues ont été validées",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         SectionTitle("Relevé")
         TileRow {
             Tile(Icons.Outlined.Lock, "Accès", accessSummary(s), Modifier.weight(1f)) { vm.go("site/$id/access") }

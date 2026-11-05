@@ -29,6 +29,10 @@ class SiteStore(ctx: Context) {
         }
     }
 
+    fun delete(id: String) {
+        io.execute { runCatching { fileFor(id).delete() } }
+    }
+
     companion object {
         val json = Json {
             ignoreUnknownKeys = true
@@ -64,6 +68,17 @@ class SiteStore(ctx: Context) {
             accessHO = i.accessHO,
             accessHNO = i.accessHNO,
             inventoryNote = i.note,
+            known = i.known.map { Known(id = it.id, label = it.label, value = it.value, source = it.source) },
+            prior = i.prior,
+            entries = i.prefill.mapValues { Entry(value = it.value) },
+            racks = i.racks.map { r ->
+                Rack(
+                    label = r.label, kind = r.kind, description = r.description, usager = r.usager,
+                    equipments = r.equipments.map { e ->
+                        Equipment(type = e.type, brand = e.brand, model = e.model, commissioningDate = e.commissioningDate, comment = e.comment)
+                    },
+                )
+            },
         )
 
         fun demoSite(): Site = Site(

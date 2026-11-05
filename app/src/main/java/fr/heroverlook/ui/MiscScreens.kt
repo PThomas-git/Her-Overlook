@@ -88,6 +88,27 @@ fun SummaryScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
     val st = s.stats()
     var newTodo by remember { mutableStateOf("") }
+    var confirmRevisit by remember { mutableStateOf(false) }
+
+    if (confirmRevisit) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmRevisit = false },
+            title = { Text("Lancer une contre-visite ?") },
+            text = {
+                Text(
+                    "Le relevé actuel est archivé. Les ${st.reserve + st.nc} point(s) en réserve ou non conformes " +
+                        "sont remis à « non renseigné » pour être revus ; tout le reste est conservé."
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmRevisit = false
+                    vm.startRevisit(id)
+                }) { Text("Lancer") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmRevisit = false }) { Text("Annuler") } },
+        )
+    }
 
     Screen("Synthèse", s.name.ifBlank { s.id }, vm::back) {
         Panel(accent = if (st.nc > 0) Verdict.NC.color() else if (st.reserve > 0) Verdict.RESERVE.color() else Verdict.OK.color()) {
@@ -113,6 +134,30 @@ fun SummaryScreen(vm: AppVM, id: String) {
                     if (e.comment.isNotBlank()) Text(e.comment, style = MaterialTheme.typography.bodyMedium)
                     if (e.photos.isNotEmpty()) Text("${e.photos.size} photo(s)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+
+        SectionTitle("Contre-visite")
+        Panel {
+            if (s.rounds.isNotEmpty()) {
+                Text(
+                    "${s.rounds.size} visite(s) archivée(s) — dernière : ${s.rounds.last().date}",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                "Archive le relevé actuel et remet à zéro uniquement les points en réserve ou non conformes. " +
+                    "Les points conformes restent acquis ; la check-list affiche alors le filtre « Contre-visite » " +
+                    "avec le constat précédent sous chaque point.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(
+                onClick = { confirmRevisit = true },
+                enabled = st.reserve + st.nc > 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Lancer une contre-visite (${st.reserve + st.nc} point(s))")
             }
         }
 

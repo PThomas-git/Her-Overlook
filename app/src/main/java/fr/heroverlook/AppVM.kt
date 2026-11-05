@@ -13,39 +13,68 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.Entry
 import fr.heroverlook.data.Exporter
+import fr.heroverlook.data.Known
+import fr.heroverlook.data.Photos
+import fr.heroverlook.data.VisitRound
 import fr.heroverlook.data.Rack
 import fr.heroverlook.data.Site
 import fr.heroverlook.data.SiteStore
+import fr.heroverlook.data.Verdict
+import fr.heroverlook.data.VisitStatus
 import fr.heroverlook.data.allPhotos
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
-class AppVM(app: Application) : AndroidViewModel(app) {
+class AppVM(app: Application, private val state: SavedStateHandle) : AndroidViewModel(app) {
     private val store = SiteStore(app)
 
     val sites = mutableStateMapOf<String, Site>()
-    val nav = mutableStateListOf("home")
+
+    /** Pile de navigation, sauvegardée : Android peut tuer l'appli pendant que l'appareil photo est ouvert. */
+    val nav = mutableStateListOf<String>().apply {
+        addAll(state.get<ArrayList<String>>("nav") ?: arrayListOf("home"))
+    }
     var busy by mutableStateOf<String?>(null)
 
     init {
         store.loadAll().forEach { sites[it.id] = it }
         AppLog.i("app", "${sites.size} site(s) chargé(s)")
+        // Routes pointant vers un site disparu : on les retire pour ne pas afficher d'écran vide.
+        nav.removeAll { route ->
+            val siteId = route.split("/").getOrNull(1)
+            route.startsWith("site/") && (siteId == null || !sites.containsKey(siteId))
+        }
+        if (nav.isEmpty() || nav.first() != "home") nav.add(0, "home")
+        saveNav()
         if (AppLog.consumeCrashFlag()) {
             toast("L'appli s'est fermée brutalement la dernière fois. Menu ⋮ > Partager le log pour m'envoyer le détail.")
         }
+        recoverOrphanPhotos()
+    }
+
+    private fun saveNav() {
+        state["nav"] = ArrayList(nav)
     }
 
     // --- navigation (routes : "home", "site/ID", "site/ID/access", "site/ID/rack/RACKID", ...) ---
     fun go(route: String) {
+        if (nav.lastOrNull() == route) return // double appui : ne pas empiler deux fois le même écran
         AppLog.i("nav", "→ $route")
         nav.add(route)
+        saveNav()
     }
 
     fun back() {
         if (nav.size > 1) {
             AppLog.i("nav", "← retour (depuis ${nav.last()})")
             nav.removeAt(nav.lastIndex)
+            saveNav()
         }
     }
 
@@ -57,8 +86,86 @@ class AppVM(app: Application) : AndroidViewModel(app) {
         store.save(next)
     }
 
+    private fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    /** Dès qu'un point est renseigné, le site passe automatiquement « En cours » (et la date de visite est posée). */
+    private fun startedIfNeeded(s: Site): Site =
+        if (s.status == VisitStatus.TODO) s.copy(status = VisitStatus.IN_PROGRESS, visitDate = s.visitDate.ifBlank { today() }) else s
+
     fun setEntry(siteId: String, itemId: String, f: (Entry) -> Entry) = update(siteId) { s ->
-        s.copy(entries = s.entries + (itemId to f(s.entries[itemId] ?: Entry())))
+        val e = f(s.entries[itemId] ?: Entry())
+        val next = s.copy(entries = s.entries + (itemId to e))
+        if (e.verdict != Verdict.UNSET) startedIfNeeded(next) else next
+    }
+
+    /** Passe en « conforme » tous les points encore non renseignés d'une section (gain de temps sur site). */
+    fun markUnansweredOk(siteId: String, itemIds: List<String>) = update(siteId) { s ->
+        val add = itemIds
+            .filter { (s.entries[it]?.verdict ?: Verdict.UNSET) == Verdict.UNSET }
+            .associateWith { id -> (s.entries[id] ?: Entry()).copy(verdict = Verdict.OK) }
+        if (add.isEmpty()) s else startedIfNeeded(s.copy(entries = s.entries + add))
+    }
+
+    fun setKnown(siteId: String, knownId: String, f: (Known) -> Known) = update(siteId) { s ->
+        s.copy(known = s.known.map { if (it.id == knownId) f(it) else it })
+    }
+
+    /**
+     * Contre-visite : archive la visite en cours, remet à zéro uniquement les points en réserve ou non conformes
+     * (les points conformes restent acquis) et mémorise la liste des points à revoir.
+     */
+    fun startRevisit(siteId: String) = update(siteId) { s ->
+        val flagged = s.entries.filter { it.value.verdict == Verdict.RESERVE || it.value.verdict == Verdict.NC }.keys.toList()
+        if (flagged.isEmpty()) s
+        else s.copy(
+            rounds = s.rounds + VisitRound(date = today(), entries = s.entries),
+            revisitIds = flagged,
+            entries = s.entries + flagged.associateWith { Entry() },
+            status = VisitStatus.IN_PROGRESS,
+        )
+    }
+
+    /**
+     * Si Android a tué l'appli pendant la prise de vue, le fichier photo existe mais n'est rattaché à rien.
+     * Au démarrage on les retrouve et on les range dans « Photos du site » (le nom du fichier garde le contexte).
+     */
+    private fun recoverOrphanPhotos() {
+        val ctx = getApplication<Application>()
+        val snapshot = sites.values.toList()
+        Thread {
+            try {
+                val found = HashMap<String, List<String>>()
+                for (s in snapshot) {
+                    val dir = File(ctx.filesDir, "photos/${SiteStore.safeName(s.id)}")
+                    val files = dir.listFiles { f -> f.isFile && f.extension.equals("jpg", true) } ?: continue
+                    val known = s.allPhotos().toSet()
+                    val orphans = ArrayList<String>()
+                    for (f in files) {
+                        // Fichier récent : peut encore être rattaché par le retour de l'appareil photo, on n'y touche pas.
+                        if (System.currentTimeMillis() - f.lastModified() < 120_000L) continue
+                        if (f.length() == 0L) { f.delete(); continue }
+                        val rel = Photos.rel(ctx, f)
+                        if (rel in known) continue
+                        if (f.length() > 1_500_000L) Photos.compress(f)
+                        orphans += rel
+                    }
+                    if (orphans.isNotEmpty()) found[s.id] = orphans
+                }
+                if (found.isNotEmpty()) {
+                    Handler(Looper.getMainLooper()).post {
+                        var n = 0
+                        found.forEach { (id, list) ->
+                            update(id) { st -> st.copy(generalPhotos = st.generalPhotos + list.filter { it !in st.generalPhotos }) }
+                            n += list.size
+                        }
+                        AppLog.w("photo", "$n photo(s) orpheline(s) récupérée(s)")
+                        toast("$n photo(s) récupérée(s) après une fermeture de l'appli : voir « Photos » du site.")
+                    }
+                }
+            } catch (e: Exception) {
+                AppLog.e("photo", "Récupération des photos orphelines impossible", e)
+            }
+        }.start()
     }
 
     fun updateRack(siteId: String, rackId: String, f: (Rack) -> Rack) = update(siteId) { s ->
@@ -69,15 +176,44 @@ class AppVM(app: Application) : AndroidViewModel(app) {
         return try {
             val list = SiteStore.parseInventory(text)
             var added = 0
+            var refreshed = 0
             list.forEach { inv ->
                 if (!sites.containsKey(inv.id)) {
                     val s = SiteStore.fromInventory(inv)
                     sites[s.id] = s
                     store.save(s)
                     added++
+                } else {
+                    // Site déjà présent : on met à jour les seules données d'inventaire, jamais le relevé.
+                    val n = SiteStore.fromInventory(inv)
+                    update(inv.id) { cur ->
+                        cur.copy(
+                            locCode = n.locCode, kind = n.kind, name = n.name, address = n.address, city = n.city,
+                            postalCode = n.postalCode, network = n.network, tier = n.tier,
+                            activeEquipment = n.activeEquipment, cooling = n.cooling, power = n.power,
+                            lat = n.lat, lon = n.lon, accessHO = n.accessHO, accessHNO = n.accessHNO,
+                            inventoryNote = n.inventoryNote,
+                            // Données connues : on garde l'état de validation déjà saisi sur place.
+                            known = n.known.map { nk ->
+                                val old = cur.known.firstOrNull { it.id == nk.id }
+                                if (old != null) nk.copy(state = old.state, fix = old.fix) else nk
+                            },
+                            prior = n.prior,
+                            // Valeurs pré-remplies : jamais d'écrasement d'une valeur déjà saisie.
+                            entries = cur.entries.toMutableMap().also { m ->
+                                n.entries.forEach { (k, v) ->
+                                    val e = m[k]
+                                    if (e == null) m[k] = v else if (e.value.isBlank()) m[k] = e.copy(value = v.value)
+                                }
+                            },
+                            racks = cur.racks + n.racks.filter { nr -> cur.racks.none { it.label == nr.label } },
+                        )
+                    }
+                    refreshed++
                 }
             }
-            toast("$added site(s) ajouté(s) (${list.size} dans le fichier)")
+            AppLog.i("import", "Inventaire : $added ajouté(s), $refreshed mis à jour")
+            toast("$added site(s) ajouté(s), $refreshed mis à jour (${list.size} dans le fichier)")
             added
         } catch (e: Exception) {
             AppLog.e("import", "Inventaire illisible", e)
@@ -97,6 +233,10 @@ class AppVM(app: Application) : AndroidViewModel(app) {
     fun deleteDemo() {
         val id = SiteStore.demoSite().id
         sites.remove(id)
+        store.delete(id)
+        nav.removeAll { it.split("/").getOrNull(1) == id }
+        if (nav.isEmpty()) nav.add("home")
+        saveNav()
     }
 
     fun export(uri: Uri) {

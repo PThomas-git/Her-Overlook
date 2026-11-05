@@ -52,14 +52,31 @@ PowerShell : `[Convert]::ToBase64String([IO.File]::ReadAllBytes("heroverlook.jks
 ## Importer l'inventaire dans l'app
 
 Copier `sites_inventaire.json` dans le téléphone (Téléchargements), puis dans l'app : menu ⋮ → *Importer l'inventaire (JSON)*.
-Format : tableau d'objets `{ id, loc, kind (POP|ADR|ADR_PLUS), name, address, city, postalCode, tier, active, cooling, power, lat, lon, accessHO, accessHNO, note }`.
+Format : tableau d'objets `{ id, loc, kind (POP|ADR|ADR_PLUS), name, address, city, postalCode, tier, active, cooling, power, lat, lon, accessHO, accessHNO, note }`,
+plus, optionnellement, des **données connues à valider sur place** :
+
+- `known` : `[{ id, label, value, source }]` — affichées dans « Déjà connu », à confirmer ou corriger ;
+- `prior` : `{ "<id du point>": "observation antérieure" }` — rappelée sous le point de la check-list ;
+- `prefill` : `{ "<id du point>": "valeur" }` — valeur pré-remplie (n° PRM, date de mise en service…) ;
+- `racks` : `[{ label, kind, description, equipments: [{ type, brand, model, commissioningDate, comment }] }]` — baies / équipements attendus.
+
+Réimporter est sans risque : les données d'inventaire sont mises à jour, le relevé déjà saisi et l'état de validation ne sont jamais écrasés.
+
+## Fonctions principales
+
+- **Déjà connu** : informations préchargées (rapports de maintenance, fiches) à confirmer ou corriger, exportées dans `connu.csv`.
+- **Check-list** : filtres *non renseignés* / *réserves-NC* / *contre-visite*, bouton « Tout OK » par section.
+- **Contre-visite** : archive la visite, ne rouvre que les points en réserve ou non conformes, rappelle le constat précédent.
+- **Scan n° de série** : photo de l'étiquette puis lecture automatique hors ligne (ML Kit), propositions à valider.
+- **Tournée** : carte schématique hors ligne, ordre de visite suggéré, ouverture du circuit dans Maps.
+- **Journal** : voir plus haut.
 
 ## Données
 
 - Stockage : un fichier JSON par site dans le stockage privé de l'app (`files/sites/`), photos dans `files/photos/<site>/`.
 - Photos : réduites à 2560 px, JPEG 85 %, nommées `<site>_<contexte>_<horodatage>.jpg`.
 - Export : bouton ↑ de l'accueil → ZIP contenant `export.json`, `sites.csv`, `checklist.csv`, `baies_equipements.csv`,
-  `amenagement.csv` et `sites/<id>/{site.json,photos/}`. CSV en UTF-8 avec BOM, séparateur `;` (ouverture directe dans Excel FR).
+  `amenagement.csv`, `connu.csv`, `journal.log` et `sites/<id>/{site.json,photos/}`. CSV en UTF-8 avec BOM, séparateur `;` (ouverture directe dans Excel FR).
 
 ## Structure
 

@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
@@ -124,6 +125,7 @@ fun HomeScreen(vm: AppVM) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { vm.go("tour") }) { Icon(Icons.Outlined.Map, "Tournée") }
                     IconButton(onClick = {
                         val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
                         exportLauncher.launch("HerOverlook_$stamp.zip")

@@ -15,6 +15,11 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.AssistChip
+import androidx.compose.ui.platform.LocalContext
+import fr.heroverlook.data.Ocr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -174,6 +179,21 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
     fun upd(f: (Equipment) -> Equipment) =
         updRack { r -> r.copy(equipments = r.equipments.map { if (it.id == e.id) f(it) else it }) }
 
+    // Lecture automatique du n° de série : photo de l'étiquette, puis propositions à valider.
+    val ctx = LocalContext.current
+    var candidates by remember(e.id) { mutableStateOf<List<String>>(emptyList()) }
+    var scanning by remember(e.id) { mutableStateOf(false) }
+    var scanned by remember(e.id) { mutableStateOf(false) }
+    val scan = rememberPhotoTaker(siteId, "${rackTag}_sn") { rel ->
+        upd { it.copy(photos = it.photos + rel) }
+        scanning = true
+        Ocr.read(ctx, rel) { list ->
+            scanning = false
+            scanned = true
+            candidates = list
+        }
+    }
+
     Panel(accent = MaterialTheme.colorScheme.primary) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
@@ -197,6 +217,31 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
                     Field("Modèle", e.model, { t -> upd { it.copy(model = t) } }, Modifier.weight(1f))
                 }
                 Field("N° de série", e.serial, { t -> upd { it.copy(serial = t.trim()) } }, mono = true)
+                OutlinedButton(onClick = scan, enabled = !scanning, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.QrCodeScanner, null)
+                    Text(if (scanning) "  Lecture en cours…" else "  Scanner l'étiquette (lecture auto)")
+                }
+                if (candidates.isNotEmpty()) {
+                    Text(
+                        "Propositions lues sur la photo — touche la bonne valeur (à vérifier) :",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        candidates.forEach { c ->
+                            AssistChip(
+                                onClick = { upd { it.copy(serial = c) }; candidates = emptyList() },
+                                label = { Text(c, style = MonoStyle) },
+                            )
+                        }
+                    }
+                } else if (scanned && !scanning) {
+                    Text(
+                        "Aucun numéro lisible : rapproche-toi, évite les reflets, ou saisis-le à la main (la photo est conservée).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Field("Mise en service", e.commissioningDate, { t -> upd { it.copy(commissioningDate = t) } }, Modifier.weight(1f))
                     Field("N° de licence", e.license, { t -> upd { it.copy(license = t) } }, Modifier.weight(1f), mono = true)

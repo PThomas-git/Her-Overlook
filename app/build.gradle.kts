@@ -66,4 +66,6 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // Lecture de texte (n° de série) : modèle embarqué, fonctionne hors ligne
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

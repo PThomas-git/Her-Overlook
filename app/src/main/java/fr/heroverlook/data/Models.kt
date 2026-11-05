@@ -94,6 +94,28 @@ data class Layout(
     val deviations: List<Deviation> = emptyList(),
 )
 
+/** État de validation d'une information déjà connue (rapports de maintenance, fiches site…). */
+@Serializable
+enum class KnownState { TODO, OK, FIX }
+
+/** Information préchargée à valider ou corriger sur place. */
+@Serializable
+data class Known(
+    val id: String,
+    val label: String,
+    val value: String,
+    val source: String = "",
+    val state: KnownState = KnownState.TODO,
+    val fix: String = "",
+)
+
+/** Archive d'une visite précédente (créée au lancement d'une contre-visite). */
+@Serializable
+data class VisitRound(
+    val date: String = "",
+    val entries: Map<String, Entry> = emptyMap(),
+)
+
 @Serializable
 data class Site(
     val id: String,
@@ -131,6 +153,40 @@ data class Site(
     val analysis: String = "",
     val revisit: List<String> = emptyList(),
     val updatedAt: Long = 0L,
+
+    // --- données préchargées / contre-visite ---
+    val known: List<Known> = emptyList(),
+    /** Observation connue par point de contrôle (id du point -> texte), affichée dans la check-list. */
+    val prior: Map<String, String> = emptyMap(),
+    val rounds: List<VisitRound> = emptyList(),
+    /** Points à revoir lors de la contre-visite en cours. */
+    val revisitIds: List<String> = emptyList(),
+)
+
+@Serializable
+data class InvKnown(
+    val id: String,
+    val label: String,
+    val value: String,
+    val source: String = "",
+)
+
+@Serializable
+data class InvEquip(
+    val type: String = "",
+    val brand: String = "",
+    val model: String = "",
+    val commissioningDate: String = "",
+    val comment: String = "",
+)
+
+@Serializable
+data class InvRack(
+    val label: String,
+    val kind: String = "Active",
+    val description: String = "",
+    val usager: String = "",
+    val equipments: List<InvEquip> = emptyList(),
 )
 
 /** Format du fichier d'inventaire importé (sites_inventaire.json). */
@@ -153,6 +209,11 @@ data class InvSite(
     val accessHO: String = "",
     val accessHNO: String = "",
     val note: String = "",
+    val known: List<InvKnown> = emptyList(),
+    val prior: Map<String, String> = emptyMap(),
+    /** Valeurs pré-remplies par point de contrôle (id du point -> valeur), à valider sur place. */
+    val prefill: Map<String, String> = emptyMap(),
+    val racks: List<InvRack> = emptyList(),
 )
 
 fun Site.allPhotos(): List<String> {
@@ -160,6 +221,7 @@ fun Site.allPhotos(): List<String> {
     out += accessPhotos
     out += generalPhotos
     entries.values.forEach { out += it.photos }
+    rounds.forEach { r -> r.entries.values.forEach { out += it.photos } }
     out += layout.photos
     out += layout.sketches
     layout.deviations.forEach { out += it.photos }

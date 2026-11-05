@@ -5,6 +5,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -15,6 +16,7 @@ import java.util.zip.ZipOutputStream
  *  - checklist.csv          : une ligne par point de contrôle et par site (y compris non renseignés)
  *  - baies_equipements.csv  : une ligne par équipement (et par baie vide)
  *  - amenagement.csv        : écarts relevés par rapport au plan de référence
+ *  - connu.csv              : informations préchargées et leur validation sur place (confirmé / corrigé)
  *  - sites/(id)/site.json + dossier sites/(id)/photos contenant les JPEG
  */
 object Exporter {
@@ -32,11 +34,15 @@ object Exporter {
             put("checklist.csv", checklistCsv(sorted))
             put("baies_equipements.csv", racksCsv(sorted))
             put("amenagement.csv", layoutCsv(sorted))
+            put("connu.csv", knownCsv(sorted))
             put("journal.log", String(AppLog.bytes(), Charsets.UTF_8))
 
             for (s in sorted) {
                 val base = "sites/${SiteStore.safeName(s.id)}"
+                zip.setLevel(Deflater.DEFAULT_COMPRESSION)
                 put("$base/site.json", SiteStore.json.encodeToString(Site.serializer(), s))
+                // Les JPEG sont déjà compressés : on évite de perdre du temps à les recompresser.
+                zip.setLevel(Deflater.NO_COMPRESSION)
                 for (rel in s.allPhotos()) {
                     val f = File(ctx.filesDir, rel)
                     if (!f.exists()) continue
@@ -81,17 +87,35 @@ object Exporter {
     }
 
     private fun checklistCsv(sites: List<Site>): String {
-        val header = listOf("site_id", "site_nom", "type", "section", "point_id", "point", "ref", "etat", "valeur", "commentaire", "nb_photos", "photos")
+        val header = listOf(
+            "site_id", "site_nom", "type", "section", "point_id", "point", "ref", "etat", "valeur", "commentaire",
+            "nb_photos", "photos", "connu_avant_visite", "visite_precedente_date", "visite_precedente_etat", "visite_precedente_commentaire"
+        )
         val rows = ArrayList<List<String>>()
         for (s in sites) {
+            val prev = s.rounds.lastOrNull()
             for (sec in Catalog.allSections(s.kind)) {
-                for (it in sec.items) {
-                    val e = s.entries[it.id] ?: Entry()
+                for (item in sec.items) {
+                    val e = s.entries[item.id] ?: Entry()
+                    val pe = prev?.entries?.get(item.id)
                     rows += listOf(
-                        s.id, s.name, s.kind.label, sec.title, it.id, it.label, it.ref,
-                        e.verdict.name, e.value, e.comment, e.photos.size.toString(), names(e.photos)
+                        s.id, s.name, s.kind.label, sec.title, item.id, item.label, item.ref,
+                        e.verdict.name, e.value, e.comment, e.photos.size.toString(), names(e.photos),
+                        s.prior[item.id] ?: "",
+                        prev?.date ?: "", pe?.verdict?.name ?: "", pe?.comment ?: ""
                     )
                 }
+            }
+        }
+        return csv(header, rows)
+    }
+
+    private fun knownCsv(sites: List<Site>): String {
+        val header = listOf("site_id", "site_nom", "info_id", "libelle", "valeur_connue", "source", "validation", "valeur_constatee")
+        val rows = ArrayList<List<String>>()
+        for (s in sites) {
+            for (k in s.known) {
+                rows += listOf(s.id, s.name, k.id, k.label, k.value, k.source, k.state.name, k.fix)
             }
         }
         return csv(header, rows)
