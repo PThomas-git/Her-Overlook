@@ -37,16 +37,16 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.ExperimentalTextApi
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,12 +118,36 @@ private fun buildProj(shapes: HeraultMap.Shapes?, pts: List<Pt>, start: Pt?): Pr
 /** Géométrie du fond, déjà projetée aux dimensions de l'écran (zoom 1). */
 private class MapBg(
     val land: Path,
-    val communes: Path,
+    val communes: List<RingPath>,
     val sites: List<Offset>,
     val start: Offset?,
     val towns: List<Offset>,
     val hasShapes: Boolean,
 )
+
+/** Un contour de commune avec son rectangle englobant (zoom 1), pour ne dessiner que ce qui est visible. */
+private class RingPath(val path: Path, val minX: Float, val minY: Float, val maxX: Float, val maxY: Float)
+
+private fun buildRing(ring: DoubleArray, proj: Proj, w: Float, h: Float, pad: Float): RingPath {
+    val path = Path()
+    var minX = Float.MAX_VALUE
+    var minY = Float.MAX_VALUE
+    var maxX = -Float.MAX_VALUE
+    var maxY = -Float.MAX_VALUE
+    var i = 0
+    var first = true
+    while (i + 1 < ring.size) {
+        val o = proj.at(ring[i + 1], ring[i], w, h, pad)
+        if (o.x < minX) minX = o.x
+        if (o.x > maxX) maxX = o.x
+        if (o.y < minY) minY = o.y
+        if (o.y > maxY) maxY = o.y
+        if (first) { path.moveTo(o.x, o.y); first = false } else path.lineTo(o.x, o.y)
+        i += 2
+    }
+    path.close()
+    return RingPath(path, minX, minY, maxX, maxY)
+}
 
 private fun addRing(path: Path, ring: DoubleArray, proj: Proj, w: Float, h: Float, pad: Float) {
     var i = 0
@@ -150,7 +174,15 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
                 .getOrNull()
         }
     }
-    val measurer = rememberTextMeasurer()
+    val density0 = LocalDensity.current
+    val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val textPaint = remember(labelArgb, density0) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = labelArgb
+            textSize = with(density0) { 10.sp.toPx() }
+        }
+    }
     val land = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.40f)
     val border = MaterialTheme.colorScheme.outline
     val communeLine = MaterialTheme.colorScheme.outlineVariant
@@ -171,6 +203,9 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
         val w = canvasSize.width.toFloat()
         val h = canvasSize.height.toFloat()
         if (w <= 0f || h <= 0f) return
+        // Garde-fous : une valeur non numérique (NaN / infini) dans un calcul de geste corromprait la carte.
+        if (!newZoom.isFinite() || !focus.isSpecified || !focus.x.isFinite() || !focus.y.isFinite()) return
+        if (!extraPan.x.isFinite() || !extraPan.y.isFinite()) return
         val pivot = Offset(w / 2f, h / 2f)
         val z0 = zoom
         val z1 = newZoom.coerceIn(1f, MAX_ZOOM)
@@ -192,12 +227,10 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
             val pad = with(density) { 24.dp.toPx() }
             val proj = buildProj(shapes, pts, start)
             val landPath = Path()
-            val communePath = Path()
             shapes?.outline?.forEach { addRing(landPath, it, proj, w, h, pad) }
-            shapes?.communes?.forEach { addRing(communePath, it, proj, w, h, pad) }
             MapBg(
                 land = landPath,
-                communes = communePath,
+                communes = shapes?.communes?.map { buildRing(it, proj, w, h, pad) } ?: emptyList(),
                 sites = pts.map { proj.at(it.lat, it.lon, w, h, pad) },
                 start = start?.let { proj.at(it.lat, it.lon, w, h, pad) },
                 towns = TOWNS.map { proj.at(it.second, it.third, w, h, pad) },
@@ -269,32 +302,41 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
                         val h = size.height
                         val sh = b.hasShapes
                         val landPath = b.land
-                        val communePath = b.communes
                         val offs = b.sites
                         val startOff = b.start
                         val townOffs = b.towns
-                        val labelStyle = TextStyle(fontSize = 10.sp, color = labelColor)
                         val pivot = Offset(w / 2f, h / 2f)
                         val z = zoom
                         val pn = pan
                         fun tp(o: Offset): Offset = (o - pivot) * z + pivot + pn
 
-                        if (sh) {
+                        if (sh && z.isFinite() && pn.x.isFinite() && pn.y.isFinite()) {
+                            // Rectangle visible exprimé dans le repère du fond (zoom 1) : on ne dessine que les communes qui y touchent.
+                            val vx0 = (0f - pn.x - pivot.x) / z + pivot.x
+                            val vx1 = (w - pn.x - pivot.x) / z + pivot.x
+                            val vy0 = (0f - pn.y - pivot.y) / z + pivot.y
+                            val vy1 = (h - pn.y - pivot.y) / z + pivot.y
                             withTransform({
                                 translate(pn.x, pn.y)
                                 scale(z, z, pivot)
                             }) {
                                 drawPath(landPath, land)
-                                drawPath(communePath, communeLine.copy(alpha = 0.55f), style = Stroke(width = 0.6.dp.toPx() / z))
+                                val thin = Stroke(width = 0.6.dp.toPx() / z)
+                                val col = communeLine.copy(alpha = 0.55f)
+                                for (r in b.communes) {
+                                    if (r.maxX < vx0 || r.minX > vx1 || r.maxY < vy0 || r.minY > vy1) continue
+                                    drawPath(r.path, col, style = thin)
+                                }
                                 drawPath(landPath, border, style = Stroke(width = 1.5.dp.toPx() / z))
                             }
                         }
-                        // villes repères (taille constante, quel que soit le zoom)
+                        // villes repères (taille constante, quel que soit le zoom) ; texte natif : pas de mesure Compose à chaque image
+                        val nc = drawContext.canvas.nativeCanvas
                         TOWNS.forEachIndexed { i, t ->
                             val o = tp(townOffs[i])
                             if (o.x in -40f..(w + 40f) && o.y in -20f..(h + 20f)) {
                                 drawCircle(labelColor, radius = 2.dp.toPx(), center = o)
-                                drawText(measurer, t.first, topLeft = Offset(o.x + 5.dp.toPx(), o.y - 7.dp.toPx()), style = labelStyle)
+                                nc.drawText(t.first, o.x + 5.dp.toPx(), o.y + 3.dp.toPx(), textPaint)
                             }
                         }
                         // circuit

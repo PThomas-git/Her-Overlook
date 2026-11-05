@@ -122,7 +122,7 @@ private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
     val prior = s.prior[item.id]
     val prev = s.rounds.lastOrNull()?.takeIf { it.entries[item.id]?.verdict != null && it.entries[item.id]?.verdict != Verdict.UNSET }
 
-    Panel(accent = if (e.verdict == Verdict.UNSET) null else e.verdict.color(), onClick = null) {
+    Panel(accent = if (e.verdict == Verdict.UNSET) null else e.verdict.color(), onClick = null, animateSize = false) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -172,7 +172,7 @@ private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
             }
         }
-        AnimatedVisibility(visible = open) {
+        AnimatedVisibility(visible = open, enter = ExpandEnter, exit = ExpandExit) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (item.valueLabel != null) {
                     Field(item.valueLabel, e.value, { t -> vm.setEntry(siteId, item.id) { it.copy(value = t) } })

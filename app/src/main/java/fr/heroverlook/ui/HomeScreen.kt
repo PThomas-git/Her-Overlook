@@ -67,9 +67,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private enum class Filter(val label: String) {
-    ALL("Tous"), POP("POP"), ADR("ADR"), TODO("À faire"), DOING("En cours"), DONE("Terminés")
+/** Bascule une valeur dans une sélection stockée sous forme de texte « a,b,c » (sauvegardable). */
+private fun toggleSel(cur: String, key: String): String {
+    val s = cur.split(",").filter { it.isNotBlank() }.toMutableSet()
+    if (!s.add(key)) s.remove(key)
+    return s.joinToString(",")
 }
+
+private fun inSel(cur: String, key: String) = cur.split(",").contains(key)
 
 @Composable
 fun statusColor(s: VisitStatus): Color = when (s) {
@@ -82,8 +87,12 @@ fun statusColor(s: VisitStatus): Color = when (s) {
 fun HomeScreen(vm: AppVM) {
     val ctx = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
-    var filter by rememberSaveable { mutableStateOf(Filter.ALL) }
+    // Filtres combinables, sans exclusivité : plusieurs puces actives par groupe (OU) ; les deux groupes se cumulent (ET).
+    // Aucune puce active dans un groupe = pas de restriction sur ce groupe.
+    var typeSel by rememberSaveable { mutableStateOf("") }
+    var statusSel by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.export(uri)
@@ -102,16 +111,29 @@ fun HomeScreen(vm: AppVM) {
 
     val all = vm.sites.values.sortedWith(compareBy({ it.kind.ordinal }, { it.id }))
     val shown = all.filter { s ->
-        val okFilter = when (filter) {
-            Filter.ALL -> true
-            Filter.POP -> s.kind == SiteKind.POP
-            Filter.ADR -> s.kind != SiteKind.POP
-            Filter.TODO -> s.status == VisitStatus.TODO
-            Filter.DOING -> s.status == VisitStatus.IN_PROGRESS
-            Filter.DONE -> s.status == VisitStatus.DONE
-        }
+        val typeOk = typeSel.isBlank() ||
+            (s.kind == SiteKind.POP && inSel(typeSel, "POP")) ||
+            (s.kind != SiteKind.POP && inSel(typeSel, "ADR"))
+        val statusOk = statusSel.isBlank() || inSel(statusSel, s.status.name)
         val q = query.trim()
-        okFilter && (q.isEmpty() || listOf(s.id, s.name, s.city, s.address).any { it.contains(q, ignoreCase = true) })
+        typeOk && statusOk && (q.isEmpty() || listOf(s.id, s.name, s.city, s.address).any { it.contains(q, ignoreCase = true) })
+    }
+
+    if (confirmDeleteAll) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Supprimer tous les sites ?") },
+            text = {
+                Text(
+                    "Les ${all.size} site(s), leurs relevés et leurs photos seront effacés de ce téléphone, sans retour possible. " +
+                        "Pense à exporter (icône ↑) avant. Tu pourras ensuite réimporter l'inventaire depuis le menu ⋮."
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { confirmDeleteAll = false; vm.deleteAllSites() }) { Text("Tout supprimer") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDeleteAll = false }) { Text("Annuler") } },
+        )
     }
 
     Scaffold(
@@ -144,6 +166,11 @@ fun HomeScreen(vm: AppVM) {
                             })
                             DropdownMenuItem(text = { Text("Ajouter un site de démo") }, onClick = { menu = false; vm.loadDemo() })
                             DropdownMenuItem(text = { Text("Retirer le site de démo") }, onClick = { menu = false; vm.deleteDemo() })
+                            DropdownMenuItem(
+                                text = { Text("Supprimer tous les sites…") },
+                                enabled = all.isNotEmpty(),
+                                onClick = { menu = false; confirmDeleteAll = true },
+                            )
                         }
                     }
                 },
@@ -169,9 +196,31 @@ fun HomeScreen(vm: AppVM) {
                     )
                 }
                 item {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Filter.values().forEach { f ->
-                            FilterChip(selected = filter == f, onClick = { filter = f }, label = { Text(f.label) })
+                    androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Type", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp, end = 4.dp))
+                            FilterChip(
+                                selected = inSel(typeSel, "POP"), onClick = { typeSel = toggleSel(typeSel, "POP") },
+                                label = { Text("POP (${all.count { it.kind == SiteKind.POP }})") },
+                            )
+                            FilterChip(
+                                selected = inSel(typeSel, "ADR"), onClick = { typeSel = toggleSel(typeSel, "ADR") },
+                                label = { Text("ADR (${all.count { it.kind != SiteKind.POP }})") },
+                            )
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Statut", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp, end = 4.dp))
+                            VisitStatus.values().forEach { st ->
+                                FilterChip(
+                                    selected = inSel(statusSel, st.name), onClick = { statusSel = toggleSel(statusSel, st.name) },
+                                    label = { Text("${st.label} (${all.count { it.status == st }})") },
+                                )
+                            }
+                        }
+                        if (typeSel.isNotBlank() || statusSel.isNotBlank()) {
+                            androidx.compose.material3.TextButton(onClick = { typeSel = ""; statusSel = "" }) {
+                                Text("Réinitialiser les filtres (${shown.size}/${all.size} affichés)")
+                            }
                         }
                     }
                 }

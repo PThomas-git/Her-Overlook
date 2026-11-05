@@ -194,7 +194,7 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
         }
     }
 
-    Panel(accent = MaterialTheme.colorScheme.primary) {
+    Panel(accent = MaterialTheme.colorScheme.primary, animateSize = false) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
                 Text(
@@ -208,7 +208,7 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, "Déplier")
             }
         }
-        AnimatedVisibility(visible = open) {
+        AnimatedVisibility(visible = open, enter = ExpandEnter, exit = ExpandExit) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChoiceChips(EquipmentTypes.all, e.type) { t -> upd { it.copy(type = t) } }
                 Field("Type (libre)", e.type, { t -> upd { it.copy(type = t) } })

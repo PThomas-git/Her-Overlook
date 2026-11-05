@@ -242,13 +242,27 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         }
     }
 
-    fun deleteDemo() {
-        val id = SiteStore.demoSite().id
+    fun deleteDemo() = deleteSite(SiteStore.demoSite().id)
+
+    /** Supprime un site, son relevé et ses photos de ce téléphone (irréversible : penser à exporter avant). */
+    fun deleteSite(id: String, withPhotos: Boolean = true) {
         sites.remove(id)
         store.delete(id)
-        nav.removeAll { it.split("/").getOrNull(1) == id }
+        if (withPhotos) {
+            val dir = File(getApplication<Application>().filesDir, "photos/${SiteStore.safeName(id)}")
+            runCatching { dir.deleteRecursively() }
+        }
+        nav.removeAll { it.startsWith("site/") && it.split("/").getOrNull(1) == id }
         if (nav.isEmpty()) nav.add("home")
         saveNav()
+        if (tourOrder.contains(id)) setTourOrder(tourOrder.filter { it != id })
+        AppLog.w("data", "Site supprimé : $id (photos=$withPhotos)")
+    }
+
+    fun deleteAllSites() {
+        val ids = sites.keys.toList()
+        ids.forEach { deleteSite(it) }
+        toast("${ids.size} site(s) supprimé(s). Tu peux réimporter l'inventaire (menu ⋮).")
     }
 
     fun export(uri: Uri) {

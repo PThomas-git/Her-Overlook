@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Architecture
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Inventory2
@@ -51,6 +52,7 @@ import fr.heroverlook.data.Verdict
 import fr.heroverlook.data.VisitStatus
 import fr.heroverlook.data.LocationResult
 import fr.heroverlook.data.requestLocation
+import fr.heroverlook.data.allPhotos
 import fr.heroverlook.data.stats
 
 @Composable
@@ -58,10 +60,37 @@ fun SiteScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
     val st = s.stats()
     val layoutFilled = s.layout.deviations.size + s.layout.photos.size
+    val confirmDelete = remember { mutableStateOf(false) }
+    if (confirmDelete.value) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete.value = false },
+            title = { Text("Supprimer ce site ?") },
+            text = {
+                Text(
+                    "${s.name.ifBlank { s.id }} : le relevé et les ${s.allPhotos().size} photo(s) seront effacés " +
+                        "de ce téléphone, sans retour possible. Pense à exporter avant. " +
+                        "Réimporter l'inventaire recréera le site, vide."
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDelete.value = false
+                    vm.back()
+                    vm.deleteSite(id)
+                }) { Text("Supprimer") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDelete.value = false }) { Text("Annuler") } },
+        )
+    }
     Screen(
         title = s.name.ifBlank { s.id },
         subtitle = s.id,
         onBack = vm::back,
+        actions = {
+            androidx.compose.material3.IconButton(onClick = { confirmDelete.value = true }) {
+                Icon(Icons.Outlined.Delete, "Supprimer le site")
+            }
+        },
     ) {
         Panel(accent = statusColor(s.status)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

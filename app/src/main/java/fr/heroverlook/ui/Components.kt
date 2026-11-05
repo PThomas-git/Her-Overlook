@@ -27,6 +27,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -100,6 +106,12 @@ import kotlin.concurrent.thread
 
 // ---------- Écran ----------
 
+/** Déploiement d'un bloc (commentaire, photos…) : un seul tempo pour le contenu ET le cadre qui le contient. */
+val ExpandEnter: EnterTransition =
+    fadeIn(tween(220)) + expandVertically(tween(260, easing = FastOutSlowInEasing))
+val ExpandExit: ExitTransition =
+    fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing))
+
 @Composable
 fun Screen(
     title: String,
@@ -156,6 +168,11 @@ fun Panel(
     modifier: Modifier = Modifier,
     accent: Color? = null,
     onClick: (() -> Unit)? = null,
+    /**
+     * Anime les changements de hauteur du contenu. À désactiver quand le contenu gère lui-même son déploiement
+     * (AnimatedVisibility) : sinon le cadre et son contenu s'animent séparément et le cadre traîne.
+     */
+    animateSize: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(18.dp)
@@ -183,7 +200,7 @@ fun Panel(
         Column(
             Modifier
                 .fillMaxWidth()
-                .animateContentSize(tween(260, easing = FastOutSlowInEasing))
+                .then(if (animateSize) Modifier.animateContentSize(tween(260, easing = FastOutSlowInEasing)) else Modifier)
                 .drawBehind { if (bar.alpha > 0f) drawRect(bar, size = Size(4.dp.toPx(), size.height)) }
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
