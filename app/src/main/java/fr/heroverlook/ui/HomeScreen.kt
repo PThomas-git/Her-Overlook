@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
@@ -57,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import fr.heroverlook.AppVM
+import fr.heroverlook.data.KnownState
 import fr.heroverlook.data.Site
 import fr.heroverlook.data.SiteKind
 import fr.heroverlook.data.Verdict
@@ -248,6 +250,7 @@ private fun Overview(all: List<Site>) {
     val nc = all.sumOf { it.stats().nc }
     val res = all.sumOf { it.stats().reserve }
     val photos = all.sumOf { it.allPhotos().size }
+    val toValidate = all.sumOf { s -> s.known.count { it.state == KnownState.TODO } }
     Panel(accent = MaterialTheme.colorScheme.primary) {
         Text("Tournée", style = MaterialTheme.typography.titleMedium)
         val target = if (all.isEmpty()) 0f else done.toFloat() / all.size
@@ -256,6 +259,7 @@ private fun Overview(all: List<Site>) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Counter("${done}/${all.size}", "terminés")
             Counter("$doing", "en cours")
+            if (toValidate > 0) Counter("$toValidate", "à confirmer", MaterialTheme.colorScheme.secondary)
             Counter("$res", "réserves", Verdict.RESERVE.color())
             Counter("$nc", "non conf.", Verdict.NC.color())
             Counter("$photos", "photos")
@@ -313,6 +317,17 @@ private fun SiteCard(s: Site, modifier: Modifier = Modifier, onClick: () -> Unit
             overflow = TextOverflow.Ellipsis,
         )
         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        val toValidate = s.known.count { it.state == KnownState.TODO }
+        if (toValidate > 0) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                Text(
+                    "$toValidate info(s) à confirmer",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            }
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("${st.answered}/${st.total} points", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (st.reserve > 0) Text("${st.reserve} réserve(s)", style = MaterialTheme.typography.labelMedium, color = Verdict.RESERVE.color())

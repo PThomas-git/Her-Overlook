@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,7 +19,10 @@ import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.Entry
 import fr.heroverlook.data.Exporter
 import fr.heroverlook.data.Known
+import fr.heroverlook.data.LatLon
 import fr.heroverlook.data.Photos
+import fr.heroverlook.data.TourPlanner
+import fr.heroverlook.data.latLon
 import fr.heroverlook.data.VisitRound
 import fr.heroverlook.data.Rack
 import fr.heroverlook.data.Site
@@ -35,15 +39,92 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
     private val store = SiteStore(app)
     private val prefs = app.getSharedPreferences("tour", Context.MODE_PRIVATE)
 
-    /** Ordre de la tournée (ids de sites), modifiable à la main et conservé entre deux lancements. */
-    val tourOrder = mutableStateListOf<String>().apply {
-        addAll((prefs.getString("order", "") ?: "").split("\n").filter { it.isNotBlank() })
+    // ---- Tournée (réglages et plan conservés entre deux lancements) ----
+    var tourDays by mutableIntStateOf(prefs.getInt("days", 1))
+    var tourPopOnly by mutableStateOf(prefs.getBoolean("popOnly", false))
+    var tourFarFirst by mutableStateOf(prefs.getBoolean("farFirst", true))
+    var tourDetourKm by mutableIntStateOf(prefs.getInt("detourKm", 5))
+
+    /** « lat, lon » si le départ est ma position ; vide = agence de Saint-Aunès (clés). */
+    var tourBaseHere by mutableStateOf(prefs.getString("here", "") ?: "")
+
+    /** Plan : une liste d'identifiants de sites par jour. */
+    val tourPlan = mutableStateListOf<List<String>>().apply {
+        addAll(TourPlanner.decodePlan(prefs.getString("plan", "") ?: ""))
     }
 
-    fun setTourOrder(ids: List<String>) {
-        tourOrder.clear()
-        tourOrder.addAll(ids)
-        prefs.edit().putString("order", ids.joinToString("\n")).apply()
+    fun tourBase(): LatLon {
+        val m = Regex("(-?\\d+\\.\\d+)\\s*,\\s*(-?\\d+\\.\\d+)").find(tourBaseHere)
+        return if (m != null) LatLon(m.groupValues[1].toDouble(), m.groupValues[2].toDouble()) else TourPlanner.AGENCY
+    }
+
+    private fun saveTour() {
+        prefs.edit()
+            .putInt("days", tourDays).putBoolean("popOnly", tourPopOnly).putBoolean("farFirst", tourFarFirst)
+            .putInt("detourKm", tourDetourKm).putString("here", tourBaseHere)
+            .putString("plan", TourPlanner.encodePlan(tourPlan.toList()))
+            .apply()
+    }
+
+    fun setTourPlan(days: List<List<String>>) {
+        tourPlan.clear()
+        tourPlan.addAll(days)
+        saveTour()
+    }
+
+    /** Sites candidats : avec coordonnées, pas terminés (les sites finis sont déclassés), POP seulement si demandé. */
+    fun tourCandidates(): List<Site> = sites.values.filter {
+        it.latLon() != null && it.status != VisitStatus.DONE && (!tourPopOnly || it.kind.isPop)
+    }
+
+    /** Recalcule tout le plan avec les réglages actuels (écrase l'ordre modifié à la main). */
+    fun planTour() {
+        val base = tourBase()
+        val groups = TourPlanner.splitDays(tourCandidates(), base, tourDays)
+            .map { g -> TourPlanner.orderDay(g, base, tourFarFirst).map { it.id } }
+        setTourPlan(groups)
+        AppLog.i("tour", "Tournée recalculée : ${groups.map { it.size }} site(s) par jour")
+    }
+
+    fun updateTourSettings(days: Int = tourDays, popOnly: Boolean = tourPopOnly, farFirst: Boolean = tourFarFirst, detourKm: Int = tourDetourKm) {
+        val replan = days != tourDays || popOnly != tourPopOnly || farFirst != tourFarFirst
+        tourDays = days
+        tourPopOnly = popOnly
+        tourFarFirst = farFirst
+        tourDetourKm = detourKm
+        if (replan) planTour() else saveTour()
+    }
+
+    fun setTourBaseHere(text: String) {
+        tourBaseHere = text
+        planTour()
+    }
+
+    fun moveInDay(day: Int, from: Int, delta: Int) {
+        val d = tourPlan.getOrNull(day)?.toMutableList() ?: return
+        val to = from + delta
+        if (from !in d.indices || to !in d.indices) return
+        val t = d[from]
+        d[from] = d[to]
+        d[to] = t
+        tourPlan[day] = d
+        saveTour()
+    }
+
+    /** Déplace une étape vers un autre jour (en fin de journée). */
+    fun moveToDay(fromDay: Int, id: String, toDay: Int) {
+        if (fromDay == toDay || toDay !in tourPlan.indices || fromDay !in tourPlan.indices) return
+        tourPlan[fromDay] = tourPlan[fromDay].filter { it != id }
+        tourPlan[toDay] = tourPlan[toDay] + id
+        saveTour()
+    }
+
+    fun insertInDay(day: Int, index: Int, id: String) {
+        val d = tourPlan.getOrNull(day)?.toMutableList() ?: return
+        if (id in d) return
+        d.add(index.coerceIn(0, d.size), id)
+        tourPlan[day] = d
+        saveTour()
     }
 
     val sites = mutableStateMapOf<String, Site>()
@@ -255,7 +336,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         nav.removeAll { it.startsWith("site/") && it.split("/").getOrNull(1) == id }
         if (nav.isEmpty()) nav.add("home")
         saveNav()
-        if (tourOrder.contains(id)) setTourOrder(tourOrder.filter { it != id })
+        if (tourPlan.any { id in it }) setTourPlan(tourPlan.map { d -> d.filter { it != id } })
         AppLog.w("data", "Site supprimé : $id (photos=$withPhotos)")
     }
 

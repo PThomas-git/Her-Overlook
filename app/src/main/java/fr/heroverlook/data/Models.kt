@@ -79,6 +79,57 @@ data class Deviation(
     val photos: List<String> = emptyList(),
 )
 
+/** Types d'éléments posables sur le plan, avec leur taille réelle par défaut en cm (largeur × profondeur). */
+@Serializable
+enum class PlanKind(val label: String, val w: Int, val h: Int, val group: String) {
+    RACK("Baie 600×800", 60, 80, "Baies"),
+    RACK_SQ("Baie 600×600", 60, 60, "Baies"),
+    RACK_WIDE("Baie 800×800", 80, 80, "Baies"),
+    ENERGY("Baie énergie", 60, 60, "Baies"),
+    BATTERY("Baie batteries", 60, 60, "Baies"),
+    ODF("Baie optique / ODF", 60, 80, "Baies"),
+    TGBT("TGBT", 80, 25, "Électricité"),
+    GTC("Coffret GTC", 60, 25, "Électricité"),
+    CLIM_SPLIT("Clim split (unité int.)", 90, 30, "Clim"),
+    CLIM_CAB("Armoire clim", 80, 80, "Clim"),
+    EXTINGUISHER("Extincteur", 25, 25, "Sécurité"),
+    DOOR("Porte", 90, 10, "Ouvertures"),
+    WINDOW("Fenêtre / grille", 100, 10, "Ouvertures"),
+    TRAY("Chemin de câbles", 40, 200, "Divers"),
+    PILLAR("Poteau", 30, 30, "Divers"),
+    OTHER("Autre", 50, 50, "Divers"),
+}
+
+@Serializable
+data class PlanPoint(val x: Int, val y: Int)
+
+/** Élément du plan : centre (x, y) en cm, dimensions non tournées (w × h), rotation par pas de 90°. */
+@Serializable
+data class PlanItem(
+    val id: String = newId(),
+    val kind: PlanKind = PlanKind.OTHER,
+    val label: String = "",
+    val x: Int = 0,
+    val y: Int = 0,
+    val w: Int = 50,
+    val h: Int = 50,
+    val rot: Int = 0,
+    /** Porte : inverse le côté d'ouverture du battant. */
+    val flip: Boolean = false,
+    val rackId: String? = null,
+    val note: String = "",
+)
+
+/** Plan du local à l'échelle : contour (sommets en cm, dans l'ordre) et éléments. */
+@Serializable
+data class Plan(
+    val outline: List<PlanPoint> = emptyList(),
+    val items: List<PlanItem> = emptyList(),
+    val snapCm: Int = 10,
+) {
+    val isBlank: Boolean get() = outline.isEmpty() && items.isEmpty()
+}
+
 /** Relevé de l'aménagement intérieur (ligne 3.4). */
 @Serializable
 data class Layout(
@@ -92,6 +143,7 @@ data class Layout(
     val photos: List<String> = emptyList(),
     val sketches: List<String> = emptyList(),
     val deviations: List<Deviation> = emptyList(),
+    val plan: Plan = Plan(),
 )
 
 /** État de validation d'une information déjà connue (rapports de maintenance, fiches site…). */

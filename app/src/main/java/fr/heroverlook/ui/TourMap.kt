@@ -2,13 +2,12 @@
 
 package fr.heroverlook.ui
 
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -35,24 +34,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.HeraultMap
+import fr.heroverlook.data.LatLon
 import fr.heroverlook.data.Site
+import fr.heroverlook.data.latLon
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.PI
@@ -93,8 +95,8 @@ private class Proj(val minLat: Double, val maxLat: Double, val minLon: Double, v
     }
 }
 
-/** Cadre de départ (zoom 1) : tout le département (si le fond est chargé) + les sites + le départ. */
-private fun buildProj(shapes: HeraultMap.Shapes?, pts: List<Pt>, start: Pt?): Proj {
+/** Cadre de départ (zoom 1) : tout le département (si le fond est chargé) + tous les points affichés + le départ. */
+private fun buildProj(shapes: HeraultMap.Shapes?, pts: List<LatLon>): Proj {
     var minLat = Double.MAX_VALUE
     var maxLat = -Double.MAX_VALUE
     var minLon = Double.MAX_VALUE
@@ -106,7 +108,6 @@ private fun buildProj(shapes: HeraultMap.Shapes?, pts: List<Pt>, start: Pt?): Pr
         if (lon > maxLon) maxLon = lon
     }
     pts.forEach { add(it.lat, it.lon) }
-    if (start != null) add(start.lat, start.lon)
     if (shapes != null) {
         add(shapes.minLat, shapes.minLon)
         add(shapes.maxLat, shapes.maxLon)
@@ -119,8 +120,10 @@ private fun buildProj(shapes: HeraultMap.Shapes?, pts: List<Pt>, start: Pt?): Pr
 private class MapBg(
     val land: Path,
     val communes: List<RingPath>,
-    val sites: List<Offset>,
-    val start: Offset?,
+    val route: List<Offset>,
+    val faint: List<Offset>,
+    val suggested: List<Offset>,
+    val base: Offset?,
     val towns: List<Offset>,
     val hasShapes: Boolean,
 )
@@ -161,11 +164,18 @@ private fun addRing(path: Path, ring: DoubleArray, proj: Proj, w: Float, h: Floa
 }
 
 /**
- * Carte hors ligne de l'Hérault : département, communes, villes repères, sites et circuit.
+ * Carte hors ligne de l'Hérault : département, communes, villes repères, étapes numérotées du jour sélectionné,
+ * autres jours en retrait et ADR proposés (cercles creux).
  * Pincer / glisser / double appui pour zoomer ; le dézoom s'arrête au cadrage initial. Touche un point pour ouvrir le site.
  */
 @Composable
-internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
+internal fun TourMap(
+    route: List<Site>,
+    faint: List<Site>,
+    suggested: List<Site>,
+    base: LatLon?,
+    onOpen: (Site) -> Unit,
+) {
     val ctx = LocalContext.current
     val shapes by produceState<HeraultMap.Shapes?>(null) {
         value = withContext(Dispatchers.IO) {
@@ -176,6 +186,7 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
     }
     val density0 = LocalDensity.current
     val labelArgb = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val onDotArgb = onVerdictColor().toArgb()
     val textPaint = remember(labelArgb, density0) {
         android.graphics.Paint().apply {
             isAntiAlias = true
@@ -183,15 +194,28 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
             textSize = with(density0) { 10.sp.toPx() }
         }
     }
+    val numberPaint = remember(onDotArgb, density0) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            color = onDotArgb
+            textSize = with(density0) { 10.sp.toPx() }
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+        }
+    }
     val land = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.40f)
     val border = MaterialTheme.colorScheme.outline
     val communeLine = MaterialTheme.colorScheme.outlineVariant
     val line = MaterialTheme.colorScheme.primary
-    val startColor = MaterialTheme.colorScheme.secondary
+    val baseColor = MaterialTheme.colorScheme.secondary
     val ring = MaterialTheme.colorScheme.onBackground
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val colors = route.map { statusColor(it.status) }
-    val pts = route.map { pointOf(it) }
+    val routeSites = route.filter { it.latLon() != null }
+    val colors = routeSites.map { statusColor(it.status) }
+    val routePts = routeSites.mapNotNull { it.latLon() }
+    val faintPts = faint.mapNotNull { it.latLon() }
+    val sugSites = suggested.filter { it.latLon() != null }
+    val sugPts = sugSites.mapNotNull { it.latLon() }
 
     // Zoom (1 = cadrage initial, minimum) et décalage. Transformation écran = pivot + (p - pivot) * zoom + pan.
     var zoom by remember { mutableFloatStateOf(1f) }
@@ -218,21 +242,23 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
 
     // Fond reconstruit seulement si la taille, les données ou le circuit changent (pas à chaque geste de zoom).
     val density = LocalDensity.current
-    val bg = remember(shapes, canvasSize, pts, start) {
+    val bg = remember(shapes, canvasSize, routePts, faintPts, sugPts, base) {
         val w = canvasSize.width.toFloat()
         val h = canvasSize.height.toFloat()
         if (w <= 0f || h <= 0f) {
             null
         } else {
             val pad = with(density) { 24.dp.toPx() }
-            val proj = buildProj(shapes, pts, start)
+            val proj = buildProj(shapes, routePts + faintPts + sugPts + listOfNotNull(base))
             val landPath = Path()
             shapes?.outline?.forEach { addRing(landPath, it, proj, w, h, pad) }
             MapBg(
                 land = landPath,
                 communes = shapes?.communes?.map { buildRing(it, proj, w, h, pad) } ?: emptyList(),
-                sites = pts.map { proj.at(it.lat, it.lon, w, h, pad) },
-                start = start?.let { proj.at(it.lat, it.lon, w, h, pad) },
+                route = routePts.map { proj.at(it.lat, it.lon, w, h, pad) },
+                faint = faintPts.map { proj.at(it.lat, it.lon, w, h, pad) },
+                suggested = sugPts.map { proj.at(it.lat, it.lon, w, h, pad) },
+                base = base?.let { proj.at(it.lat, it.lon, w, h, pad) },
                 towns = TOWNS.map { proj.at(it.second, it.third, w, h, pad) },
                 hasShapes = shapes != null,
             )
@@ -274,23 +300,25 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
                         } while (event.changes.any { it.pressed })
                     }
                 }
-                .pointerInput(route, bg) {
+                .pointerInput(route, suggested, bg) {
                     detectTapGestures(
                         onDoubleTap = { tap ->
                             if (zoom > 1.5f) zoomTo(1f, tap) else zoomTo(3f, tap)
                         },
                         onTap = { tap ->
-                            val sites = bg?.sites
-                            if (sites != null) {
+                            val b = bg
+                            if (b != null) {
                                 val pivot = Offset(size.width / 2f, size.height / 2f)
-                                var best = -1
+                                var best: Site? = null
                                 var bestD = 40.dp.toPx()
-                                sites.forEachIndexed { i, base ->
-                                    val o = (base - pivot) * zoom + pivot + pan
+                                fun test(base0: Offset, s: Site) {
+                                    val o = (base0 - pivot) * zoom + pivot + pan
                                     val d = (o - tap).getDistance()
-                                    if (d < bestD) { bestD = d; best = i }
+                                    if (d < bestD) { bestD = d; best = s }
                                 }
-                                if (best >= 0) onOpen(route[best])
+                                b.route.forEachIndexed { i, o -> if (i < routeSites.size) test(o, routeSites[i]) }
+                                b.suggested.forEachIndexed { i, o -> if (i < sugSites.size) test(o, sugSites[i]) }
+                                best?.let { onOpen(it) }
                             }
                         },
                     )
@@ -300,17 +328,12 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
                     if (b != null) {
                         val w = size.width
                         val h = size.height
-                        val sh = b.hasShapes
-                        val landPath = b.land
-                        val offs = b.sites
-                        val startOff = b.start
-                        val townOffs = b.towns
                         val pivot = Offset(w / 2f, h / 2f)
                         val z = zoom
                         val pn = pan
                         fun tp(o: Offset): Offset = (o - pivot) * z + pivot + pn
 
-                        if (sh && z.isFinite() && pn.x.isFinite() && pn.y.isFinite()) {
+                        if (b.hasShapes && z.isFinite() && pn.x.isFinite() && pn.y.isFinite()) {
                             // Rectangle visible exprimé dans le repère du fond (zoom 1) : on ne dessine que les communes qui y touchent.
                             val vx0 = (0f - pn.x - pivot.x) / z + pivot.x
                             val vx1 = (w - pn.x - pivot.x) / z + pivot.x
@@ -320,41 +343,53 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
                                 translate(pn.x, pn.y)
                                 scale(z, z, pivot)
                             }) {
-                                drawPath(landPath, land)
+                                drawPath(b.land, land)
                                 val thin = Stroke(width = 0.6.dp.toPx() / z)
                                 val col = communeLine.copy(alpha = 0.55f)
                                 for (r in b.communes) {
                                     if (r.maxX < vx0 || r.minX > vx1 || r.maxY < vy0 || r.minY > vy1) continue
                                     drawPath(r.path, col, style = thin)
                                 }
-                                drawPath(landPath, border, style = Stroke(width = 1.5.dp.toPx() / z))
+                                drawPath(b.land, border, style = Stroke(width = 1.5.dp.toPx() / z))
                             }
                         }
-                        // villes repères (taille constante, quel que soit le zoom) ; texte natif : pas de mesure Compose à chaque image
+                        // villes repères (taille constante, quel que soit le zoom) ; texte natif
                         val nc = drawContext.canvas.nativeCanvas
                         TOWNS.forEachIndexed { i, t ->
-                            val o = tp(townOffs[i])
+                            val o = tp(b.towns[i])
                             if (o.x in -40f..(w + 40f) && o.y in -20f..(h + 20f)) {
                                 drawCircle(labelColor, radius = 2.dp.toPx(), center = o)
                                 nc.drawText(t.first, o.x + 5.dp.toPx(), o.y + 3.dp.toPx(), textPaint)
                             }
                         }
-                        // circuit
-                        val chain = (if (startOff != null) listOf(startOff) + offs else offs).map { tp(it) }
+                        // autres jours : points en retrait
+                        b.faint.forEach { drawCircle(labelColor.copy(alpha = 0.45f), radius = 5.dp.toPx(), center = tp(it)) }
+                        // circuit du jour : du départ aux étapes, puis retour en pointillé léger
+                        val baseOff = b.base?.let { tp(it) }
+                        val chain = (if (baseOff != null) listOf(baseOff) else emptyList()) + b.route.map { tp(it) }
                         for (i in 0 until chain.size - 1) {
-                            drawLine(line.copy(alpha = 0.7f), chain[i], chain[i + 1], strokeWidth = 2.dp.toPx())
+                            drawLine(line.copy(alpha = 0.75f), chain[i], chain[i + 1], strokeWidth = 2.dp.toPx())
                         }
-                        // sites
-                        offs.forEachIndexed { i, base ->
-                            val o = tp(base)
-                            drawCircle(colors[i], radius = 8.dp.toPx(), center = o)
-                            drawCircle(ring, radius = 8.dp.toPx(), center = o, style = Stroke(width = 1.5.dp.toPx()))
+                        if (baseOff != null && b.route.isNotEmpty()) {
+                            drawLine(line.copy(alpha = 0.25f), tp(b.route.last()), baseOff, strokeWidth = 1.5.dp.toPx())
+                        }
+                        // ADR proposés : cercles creux avec « + »
+                        b.suggested.forEach {
+                            val o = tp(it)
+                            drawCircle(baseColor, radius = 8.dp.toPx(), center = o, style = Stroke(width = 2.dp.toPx()))
+                            nc.drawText("+", o.x - 3.5.dp.toPx(), o.y + 4.dp.toPx(), textPaint)
+                        }
+                        // étapes numérotées
+                        b.route.forEachIndexed { i, base0 ->
+                            val o = tp(base0)
+                            drawCircle(colors[i], radius = 10.dp.toPx(), center = o)
+                            drawCircle(ring, radius = 10.dp.toPx(), center = o, style = Stroke(width = 1.5.dp.toPx()))
+                            nc.drawText("${i + 1}", o.x, o.y + 3.5.dp.toPx(), numberPaint)
                         }
                         // départ
-                        if (startOff != null) {
-                            val o = tp(startOff)
-                            drawCircle(startColor, radius = 7.dp.toPx(), center = o)
-                            drawCircle(startColor, radius = 13.dp.toPx(), center = o, style = Stroke(width = 2.dp.toPx()))
+                        if (baseOff != null) {
+                            drawCircle(baseColor, radius = 7.dp.toPx(), center = baseOff)
+                            drawCircle(baseColor, radius = 13.dp.toPx(), center = baseOff, style = Stroke(width = 2.dp.toPx()))
                         }
                     }
                 },
@@ -381,7 +416,7 @@ internal fun TourMap(route: List<Site>, start: Pt?, onOpen: (Site) -> Unit) {
             ) { Icon(Icons.Outlined.CenterFocusStrong, "Cadrage initial") }
         }
         Text(
-            "Pincer ou double appui pour zoomer · le dézoom s'arrête au cadrage initial · fond embarqué (hors ligne), contours IGN / Etalab, Licence Ouverte",
+            "Pincer ou double appui pour zoomer · le dézoom s'arrête au cadrage initial · ● étapes du jour · ○ ADR proposés · points gris : autres jours · fond hors ligne, contours IGN / Etalab (Licence Ouverte)",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

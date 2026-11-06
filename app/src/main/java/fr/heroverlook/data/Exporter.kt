@@ -35,12 +35,25 @@ object Exporter {
             put("baies_equipements.csv", racksCsv(sorted))
             put("amenagement.csv", layoutCsv(sorted))
             put("connu.csv", knownCsv(sorted))
+            put("plans_elements.csv", planCsv(sorted))
             put("journal.log", String(AppLog.bytes(), Charsets.UTF_8))
 
             for (s in sorted) {
                 val base = "sites/${SiteStore.safeName(s.id)}"
                 zip.setLevel(Deflater.DEFAULT_COMPRESSION)
                 put("$base/site.json", SiteStore.json.encodeToString(Site.serializer(), s))
+                val plan = s.layout.plan
+                if (!plan.isBlank) {
+                    // plan vectoriel (SVG, en cm) + image, pour reprise sur PC
+                    put("$base/plan.svg", PlanRender.svg(plan, s.displayName()))
+                    runCatching {
+                        val bmp = PlanRender.bitmap(plan)
+                        zip.putNextEntry(ZipEntry("$base/plan.png"))
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, zip)
+                        zip.closeEntry()
+                        bmp.recycle()
+                    }
+                }
                 // Les JPEG sont déjà compressés : on évite de perdre du temps à les recompresser.
                 zip.setLevel(Deflater.NO_COMPRESSION)
                 for (rel in s.allPhotos()) {
@@ -105,6 +118,24 @@ object Exporter {
                         prev?.date ?: "", pe?.verdict?.name ?: "", pe?.comment ?: ""
                     )
                 }
+            }
+        }
+        return csv(header, rows)
+    }
+
+    private fun planCsv(sites: List<Site>): String {
+        val header = listOf(
+            "site_id", "site_nom", "element_id", "type", "libelle", "x_cm", "y_cm", "largeur_cm", "profondeur_cm",
+            "rotation_deg", "baie_liee", "note"
+        )
+        val rows = ArrayList<List<String>>()
+        for (s in sites) {
+            for (it in s.layout.plan.items) {
+                val rack = s.racks.firstOrNull { r -> r.id == it.rackId }?.label ?: ""
+                rows += listOf(
+                    s.id, s.name, it.id, it.kind.name, it.label, it.x.toString(), it.y.toString(),
+                    it.w.toString(), it.h.toString(), it.rot.toString(), rack, it.note
+                )
             }
         }
         return csv(header, rows)

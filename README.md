@@ -68,7 +68,12 @@ Réimporter est sans risque : les données d'inventaire sont mises à jour, le r
 - **Check-list** : filtres *non renseignés* / *réserves-NC* / *contre-visite*, bouton « Tout OK » par section.
 - **Contre-visite** : archive la visite, ne rouvre que les points en réserve ou non conformes, rappelle le constat précédent.
 - **Scan n° de série** : photo de l'étiquette puis lecture automatique hors ligne (ML Kit), propositions à valider.
-- **Tournée** : carte schématique hors ligne, ordre de visite suggéré, ouverture du circuit dans Maps.
+- **Tournée** : carte hors ligne de l'Hérault (zoomable), organisation sur 1 à 5 jours, départ/retour à l'agence de Saint-Aunès ou
+  « ma position », option « commencer par les plus éloignés », sites terminés retirés automatiquement, mode « uniquement les POP »
+  avec propositions d'ADR sur la route (avant / pendant / après, détour maximum réglable), ordre ajustable à la main, ouverture dans Maps.
+- **Plan du local (croquis à l'échelle)** : contour saisi en mètres (rectangle, forme en L, contour libre), éléments de taille réelle
+  (baies, TGBT, clim, portes avec battant, fenêtres…) déplacés avec accrochage sur grille, rotation par pas de 90°, liaison aux fiches
+  de baies, annulation, partage en image. Export : `plan.svg` (vectoriel, en cm), `plan.png` et `plans_elements.csv` pour refaire le plan sur PC.
 - **Journal** : voir plus haut.
 
 ## Données

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.Architecture
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Lock
@@ -131,13 +132,31 @@ fun SiteScreen(vm: AppVM, id: String) {
         if (s.known.isNotEmpty()) {
             val todo = s.known.count { it.state == fr.heroverlook.data.KnownState.TODO }
             Panel(accent = if (todo > 0) MaterialTheme.colorScheme.secondary else Verdict.OK.color(), onClick = { vm.go("site/$id/known") }) {
-                Text("Déjà connu : à valider", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    if (todo > 0) "$todo information(s) sur ${s.known.size} à confirmer ou corriger avant de commencer"
-                    else "Toutes les informations connues ont été validées",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(
+                        Icons.Outlined.Info, null,
+                        tint = if (todo > 0) MaterialTheme.colorScheme.secondary else Verdict.OK.color(),
+                        modifier = Modifier.size(26.dp),
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (todo > 0) "$todo information(s) à confirmer" else "Informations connues : toutes validées",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            "${s.known.size} donnée(s) issue(s) des rapports et fiches · touche pour valider ou corriger",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                // Aperçu direct des premières informations à confirmer
+                s.known.filter { it.state == fr.heroverlook.data.KnownState.TODO }.take(3).forEach { k ->
+                    Column {
+                        Text(k.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(k.value, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
 

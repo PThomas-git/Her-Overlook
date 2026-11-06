@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.foundation.layout.padding
+import fr.heroverlook.data.KnownState
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -71,6 +74,22 @@ fun ChecklistScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
     var filter by rememberSaveable { mutableStateOf(CheckFilter.ALL) }
     Screen("Check-list", "${s.kind.label} · ${s.name.ifBlank { s.id }}", vm::back) {
+        val toValidate = s.known.count { it.state == KnownState.TODO }
+        if (toValidate > 0) {
+            Panel(accent = MaterialTheme.colorScheme.secondary, onClick = { vm.go("site/$id/known") }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("$toValidate information(s) à confirmer", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "Touche pour les valider ou les corriger. Les encadrés « Connu » sous les points sont à confirmer sur place.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
         FilterBar(s, filter) { filter = it }
         Catalog.checklist(s.kind).forEach { sec -> SectionBlock(vm, id, sec, filter) }
     }
@@ -113,6 +132,28 @@ private fun SectionBlock(vm: AppVM, id: String, sec: Section, filter: CheckFilte
     visible.forEach { item -> ItemCard(vm, id, item) }
 }
 
+/** Encadré coloré pour une information connue à confirmer ou infirmer sur place. */
+@Composable
+private fun ConfirmBox(title: String, text: String) {
+    androidx.compose.material3.Surface(
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                Text(text, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
     val s = vm.sites[siteId] ?: return
@@ -144,10 +185,10 @@ private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
         }
         // Connu avant la visite (rapports de maintenance…) : à confirmer ou infirmer
         if (!prior.isNullOrBlank()) {
-            Text("Connu : $prior", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            ConfirmBox("Connu — à confirmer sur place", prior)
         }
         if (e.value.isNotBlank() && e.verdict == Verdict.UNSET && item.valueLabel != null) {
-            Text("${item.valueLabel} (pré-rempli, à valider) : ${e.value}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            ConfirmBox("${item.valueLabel} pré-rempli — à valider", e.value)
         }
         // Contre-visite : rappel du constat précédent
         if (prev != null) {

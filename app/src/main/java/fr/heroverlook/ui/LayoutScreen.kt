@@ -42,6 +42,16 @@ fun LayoutScreen(vm: AppVM, id: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        Panel(accent = MaterialTheme.colorScheme.primary, onClick = { vm.go("site/$id/plan") }) {
+            Text("Plan interactif du local (croquis à l'échelle)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (l.plan.isBlank) "Dessine la forme du local en mètres, puis place les baies, le TGBT, la clim et les portes à leur taille réelle."
+                else "${l.plan.items.size} élément(s) placé(s) · ${l.plan.outline.size} sommets · touche pour modifier",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         Panel {
             SectionTitle("Plan de référence")
             Field("Plan utilisé (fichier, version, date)", l.referencePlan, { t -> upd { it.copy(referencePlan = t) } }, singleLine = false, minLines = 2)

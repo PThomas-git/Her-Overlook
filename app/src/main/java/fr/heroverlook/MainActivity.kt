@@ -32,6 +32,7 @@ import fr.heroverlook.ui.HomeScreen
 import fr.heroverlook.ui.KnownScreen
 import fr.heroverlook.ui.LayoutScreen
 import fr.heroverlook.ui.PhotosScreen
+import fr.heroverlook.ui.PlanScreen
 import fr.heroverlook.ui.RackScreen
 import fr.heroverlook.ui.RacksScreen
 import fr.heroverlook.ui.SiteScreen
@@ -102,6 +103,7 @@ private fun Route(vm: AppVM, route: String) {
             "checklist" -> ChecklistScreen(vm, parts[1])
             "docs" -> DocumentsScreen(vm, parts[1])
             "layout" -> LayoutScreen(vm, parts[1])
+            "plan" -> PlanScreen(vm, parts[1])
             "racks" -> RacksScreen(vm, parts[1])
             "usagers" -> UsagersScreen(vm, parts[1])
             "photos" -> PhotosScreen(vm, parts[1])
