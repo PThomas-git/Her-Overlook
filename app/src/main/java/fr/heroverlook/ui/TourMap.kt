@@ -93,6 +93,16 @@ private class Proj(val minLat: Double, val maxLat: Double, val minLon: Double, v
         val offY = (h - spanY.toFloat() * scale) / 2f
         return Offset(offX + ((lon - minLon) * k).toFloat() * scale, offY + (maxLat - lat).toFloat() * scale)
     }
+
+    /** Opération inverse de [at] : coordonnées géographiques d'un point de l'écran (zoom 1). */
+    fun inverse(x: Float, y: Float, w: Float, h: Float, pad: Float): LatLon {
+        val scale = min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY).toFloat()
+        val offX = (w - spanX.toFloat() * scale) / 2f
+        val offY = (h - spanY.toFloat() * scale) / 2f
+        val lon = minLon + ((x - offX) / scale) / k
+        val lat = maxLat - (y - offY) / scale
+        return LatLon(lat, lon)
+    }
 }
 
 /** Cadre de départ (zoom 1) : tout le département (si le fond est chargé) + tous les points affichés + le départ. */
@@ -126,6 +136,8 @@ private class MapBg(
     val base: Offset?,
     val towns: List<Offset>,
     val hasShapes: Boolean,
+    /** Point de l'écran (zoom 1) -> coordonnées géographiques. */
+    val toLatLon: (Offset) -> LatLon,
 )
 
 /** Un contour de commune avec son rectangle englobant (zoom 1), pour ne dessiner que ce qui est visible. */
@@ -174,6 +186,8 @@ internal fun TourMap(
     faint: List<Site>,
     suggested: List<Site>,
     base: LatLon?,
+    picking: Boolean = false,
+    onPick: (LatLon) -> Unit = {},
     onOpen: (Site) -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -261,6 +275,7 @@ internal fun TourMap(
                 base = base?.let { proj.at(it.lat, it.lon, w, h, pad) },
                 towns = TOWNS.map { proj.at(it.second, it.third, w, h, pad) },
                 hasShapes = shapes != null,
+                toLatLon = { o -> proj.inverse(o.x, o.y, w, h, pad) },
             )
         }
     }
@@ -300,14 +315,19 @@ internal fun TourMap(
                         } while (event.changes.any { it.pressed })
                     }
                 }
-                .pointerInput(route, suggested, bg) {
+                .pointerInput(route, suggested, bg, picking) {
                     detectTapGestures(
                         onDoubleTap = { tap ->
                             if (zoom > 1.5f) zoomTo(1f, tap) else zoomTo(3f, tap)
                         },
                         onTap = { tap ->
                             val b = bg
-                            if (b != null) {
+                            if (b != null && picking) {
+                                // Mode « choisir le départ » : l'appui est converti en coordonnées (zoom et décalage pris en compte)
+                                val pv = Offset(size.width / 2f, size.height / 2f)
+                                val base0 = (tap - pan - pv) / zoom + pv
+                                onPick(b.toLatLon(base0))
+                            } else if (b != null) {
                                 val pivot = Offset(size.width / 2f, size.height / 2f)
                                 var best: Site? = null
                                 var bestD = 40.dp.toPx()

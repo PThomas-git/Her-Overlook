@@ -46,7 +46,26 @@ class SiteStore(ctx: Context) {
         fun parseInventory(text: String): List<InvSite> =
             json.decodeFromString(ListSerializer(InvSite.serializer()), text)
 
-        fun fromInventory(i: InvSite): Site = Site(
+        /** Relie les éléments du plan aux fiches de baie de même libellé. */
+        fun linkPlan(plan: Plan, racks: List<Rack>): Plan = plan.copy(
+            items = plan.items.map { it0 ->
+                if (it0.rackId == null && it0.label.isNotBlank()) {
+                    val r = racks.firstOrNull { r -> r.label == it0.label }
+                    if (r != null) it0.copy(rackId = r.id) else it0
+                } else it0
+            }
+        )
+
+        fun fromInventory(i: InvSite): Site {
+            val racks = i.racks.map { r ->
+                Rack(
+                    label = r.label, kind = r.kind, description = r.description, usager = r.usager,
+                    equipments = r.equipments.map { e ->
+                        Equipment(type = e.type, brand = e.brand, model = e.model, commissioningDate = e.commissioningDate, comment = e.comment)
+                    },
+                )
+            }
+            return Site(
             id = i.id,
             locCode = i.loc,
             kind = when (i.kind.uppercase()) {
@@ -71,15 +90,10 @@ class SiteStore(ctx: Context) {
             known = i.known.map { Known(id = it.id, label = it.label, value = it.value, source = it.source) },
             prior = i.prior,
             entries = i.prefill.mapValues { Entry(value = it.value) },
-            racks = i.racks.map { r ->
-                Rack(
-                    label = r.label, kind = r.kind, description = r.description, usager = r.usager,
-                    equipments = r.equipments.map { e ->
-                        Equipment(type = e.type, brand = e.brand, model = e.model, commissioningDate = e.commissioningDate, comment = e.comment)
-                    },
-                )
-            },
-        )
+            racks = racks,
+            layout = Layout(plan = i.plan?.let { linkPlan(it, racks) } ?: Plan()),
+            )
+        }
 
         fun demoSite(): Site = Site(
             id = "DEMO-0001-EXEMPLE",

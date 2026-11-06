@@ -62,8 +62,33 @@ fun TourScreen(vm: AppVM) {
 
     LaunchedEffect(Unit) { if (vm.tourPlan.isEmpty()) vm.planTour() }
 
-    // Pas de point de départ imposé : chaque journée est une boucle fermée entre ses sites.
-    val base: fr.heroverlook.data.LatLon? = null
+    // Départ choisi (ma position ou point sur la carte) ; sans départ, chaque journée est une boucle fermée entre ses sites.
+    val base = vm.tourBase()
+    var picking by remember { mutableStateOf(false) }
+    var locating by remember { mutableStateOf(false) }
+    val locError = remember { mutableStateOf<String?>(null) }
+
+    fun fetchHere() {
+        locating = true
+        requestLocation(ctx) { res ->
+            locating = false
+            when (res) {
+                is LocationResult.Ok -> {
+                    picking = false
+                    selDay = 0
+                    vm.changeTourStart(TourPlanner.fmt(fr.heroverlook.data.LatLon(res.lat, res.lon)))
+                    if (res.note != null) vm.toast("Départ : ta position (${res.note})")
+                }
+                is LocationResult.Fail -> locError.value = res.reason
+            }
+        }
+    }
+
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r.values.any { it }) fetchHere()
+        else locError.value = "Permission de localisation refusée : autorise « Position » pour Hér'Overlook dans les réglages de l'appli."
+    }
+    LocationErrorDialog(locError.value) { locError.value = null }
 
     // Jours effectifs : les sites terminés sont déclassés automatiquement.
     val days: List<List<Site>> = vm.tourPlan.map { ids ->
@@ -91,6 +116,7 @@ fun TourScreen(vm: AppVM) {
                 append(if (vm.tourDays == 1) "1 jour" else "${vm.tourDays} jours")
                 append(if (vm.tourFarFirst) " · plus éloignés d'abord" else " · ordre libre")
                 if (vm.tourPopOnly) append(" · POP seulement")
+                append(if (base != null) " · départ défini" else " · sans départ")
             },
             accent = MaterialTheme.colorScheme.primary,
         ) {
@@ -114,6 +140,27 @@ fun TourScreen(vm: AppVM) {
                     onClick = { vm.updateTourSettings(popOnly = !vm.tourPopOnly); selDay = 0 },
                     label = { Text("Uniquement les POP") },
                 )
+            }
+            // Départ et retour : ma position, un point choisi sur la carte, ou aucun
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                FilterChip(
+                    selected = vm.tourStart.isBlank() && !picking,
+                    onClick = { picking = false; vm.changeTourStart(""); selDay = 0 },
+                    label = { Text("Sans départ") },
+                )
+                FilterChip(
+                    selected = false,
+                    onClick = { permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
+                    label = { Text(if (locating) "Recherche…" else "Ma position") },
+                )
+                FilterChip(
+                    selected = picking,
+                    onClick = { picking = !picking },
+                    label = { Text("Choisir sur la carte") },
+                )
+            }
+            if (vm.tourStart.isNotBlank()) {
+                Text("Départ et retour : ${vm.tourStart}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (vm.tourPopOnly) {
                 Text("ADR proposés sur la route : détour maximum", style = MaterialTheme.typography.labelLarge)
@@ -169,18 +216,34 @@ fun TourScreen(vm: AppVM) {
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    "Boucle fermée entre les sites, distances à vol d'oiseau ; temps estimé avec ×1,3 à 50 km/h de moyenne.",
+                    (if (base != null) "Départ et retour au point choisi" else "Boucle fermée entre les sites") +
+                        ", distances à vol d'oiseau ; temps estimé avec ×1,3 à 50 km/h de moyenne.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TourMap(route, otherDays, suggestions.map { it.site }, base) { card = it }
+            if (picking) {
+                Panel(accent = MaterialTheme.colorScheme.secondary) {
+                    Text("Touche la carte pour placer le départ", style = MaterialTheme.typography.titleSmall)
+                    OutlinedButton(onClick = { picking = false }) { Text("Annuler") }
+                }
+            }
+            TourMap(
+                route, otherDays, suggestions.map { it.site }, base,
+                picking = picking,
+                onPick = { p ->
+                    picking = false
+                    selDay = 0
+                    vm.changeTourStart(TourPlanner.fmt(p))
+                },
+            ) { card = it }
             OutlinedButton(
                 onClick = {
                     val stops = route.take(10)
                     val dest = stops.last()
                     val wp = stops.dropLast(1).joinToString("|") { "${it.lat},${it.lon}" }
                     val sb = StringBuilder("https://www.google.com/maps/dir/?api=1&travelmode=driving")
+                    if (base != null) sb.append("&origin=${base.lat},${base.lon}")
                     sb.append("&destination=${dest.lat},${dest.lon}")
                     if (wp.isNotEmpty()) sb.append("&waypoints=").append(Uri.encode(wp))
                     AppLog.i("tour", "Ouverture du jour ${day + 1} dans Maps (${stops.size} étapes)")
@@ -199,7 +262,8 @@ fun TourScreen(vm: AppVM) {
             // ---------------- Étapes ----------------
             SectionTitle("Étapes du jour ${day + 1}")
             route.forEachIndexed { i, s ->
-                val leg = if (i == 0) null else TourPlanner.km(route[i - 1].latLon()!!, s.latLon()!!)
+                val prevPt = if (i == 0) base else route[i - 1].latLon()
+                val leg = prevPt?.let { TourPlanner.km(it, s.latLon()!!) }
                 val toValidate = s.known.count { it.state == KnownState.TODO }
                 Panel(accent = statusColor(s.status), onClick = { card = s }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

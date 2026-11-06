@@ -45,6 +45,19 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
     var tourFarFirst by mutableStateOf(prefs.getBoolean("farFirst", true))
     var tourDetourKm by mutableIntStateOf(prefs.getInt("detourKm", 5))
 
+    /** Point de départ et de retour : « lat, lon » (ma position ou point choisi sur la carte) ; vide = aucun. */
+    var tourStart by mutableStateOf(prefs.getString("start", "") ?: "")
+
+    fun tourBase(): LatLon? {
+        val m = Regex("(-?\\d+\\.\\d+)\\s*,\\s*(-?\\d+\\.\\d+)").find(tourStart) ?: return null
+        return LatLon(m.groupValues[1].toDouble(), m.groupValues[2].toDouble())
+    }
+
+    fun changeTourStart(text: String) {
+        tourStart = text
+        planTour()
+    }
+
     /** Plan : une liste d'identifiants de sites par jour. */
     val tourPlan = mutableStateListOf<List<String>>().apply {
         addAll(TourPlanner.decodePlan(prefs.getString("plan", "") ?: ""))
@@ -58,7 +71,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
     private fun saveTour() {
         prefs.edit()
             .putInt("days", tourDays).putBoolean("popOnly", tourPopOnly).putBoolean("farFirst", tourFarFirst)
-            .putInt("detourKm", tourDetourKm)
+            .putInt("detourKm", tourDetourKm).putString("start", tourStart)
             .putString("plan", TourPlanner.encodePlan(tourPlan.toList()))
             .putString("excluded", tourExcluded.joinToString("\n"))
             .apply()
@@ -89,7 +102,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         val di = day.coerceIn(0, plan.size - 1)
         val valid = plan[di].filter { sites[it]?.let { s -> s.status != VisitStatus.DONE } == true }.toMutableList()
         val route = valid.mapNotNull { sites[it] }
-        val idx = TourPlanner.bestInsertIndex(route, site, null)
+        val idx = TourPlanner.bestInsertIndex(route, site, tourBase())
         valid.add(idx.coerceIn(0, valid.size), site.id)
         plan[di] = valid
         setTourPlan(plan)
@@ -97,9 +110,10 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
 
     /** Recalcule tout le plan avec les réglages actuels (écrase l'ordre modifié à la main). */
     fun planTour() {
-        // Pas de point de départ imposé : chaque jour est une boucle fermée entre ses sites.
-        val groups = TourPlanner.splitDays(tourCandidates(), null, tourDays)
-            .map { g -> TourPlanner.orderDay(g, null, tourFarFirst).map { it.id } }
+        // Avec un départ : boucle départ → sites → départ. Sans départ : boucle fermée entre les sites.
+        val base = tourBase()
+        val groups = TourPlanner.splitDays(tourCandidates(), base, tourDays)
+            .map { g -> TourPlanner.orderDay(g, base, tourFarFirst).map { it.id } }
         setTourPlan(groups)
         AppLog.i("tour", "Tournée recalculée : ${groups.map { it.size }} site(s) par jour")
     }
@@ -326,6 +340,12 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
                                 }
                             },
                             racks = cur.racks + n.racks.filter { nr -> cur.racks.none { it.label == nr.label } },
+                            // Plan de départ : seulement si aucun plan n'a encore été dessiné sur ce site.
+                            layout = if (cur.layout.plan.isBlank && !n.layout.plan.isBlank) {
+                                val allRacks = cur.racks + n.racks.filter { nr -> cur.racks.none { it.label == nr.label } }
+                                val unlinked = n.layout.plan.copy(items = n.layout.plan.items.map { it.copy(rackId = null) })
+                                cur.layout.copy(plan = SiteStore.linkPlan(unlinked, allRacks))
+                            } else cur.layout,
                         )
                     }
                     refreshed++

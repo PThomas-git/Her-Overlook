@@ -55,7 +55,7 @@ fun requestLocation(ctx: Context, onResult: (LocationResult) -> Unit) {
     }
     AppLog.i("gps", "Demande de position (précise=$fine)")
 
-    fun fallback(reason: String) {
+    fun lastKnown(reason: String) {
         var best: Location? = null
         val providers = try { lm.getProviders(true) } catch (e: Exception) { emptyList<String>() }
         for (p in providers) {
@@ -76,10 +76,56 @@ fun requestLocation(ctx: Context, onResult: (LocationResult) -> Unit) {
         }
     }
 
+    /** Deuxième tentative : GPS puis réseau d'Android (sans service Google), 8 s chacun ; sinon dernière position connue. */
+    fun tryProviders(list: List<String>, i: Int, reason: String) {
+        if (i >= list.size) {
+            lastKnown(reason)
+            return
+        }
+        val p = list[i]
+        var answered = false
+        val signal = android.os.CancellationSignal()
+        main.postDelayed({
+            if (!answered) {
+                answered = true
+                signal.cancel()
+                AppLog.w("gps", "Fournisseur $p : délai dépassé")
+                tryProviders(list, i + 1, reason)
+            }
+        }, 8_000)
+        try {
+            lm.getCurrentLocation(p, signal, ctx.mainExecutor) { loc: Location? ->
+                if (!answered) {
+                    answered = true
+                    if (loc != null) {
+                        finish(LocationResult.Ok(loc.latitude, loc.longitude, loc.accuracy, "fournisseur $p"))
+                    } else {
+                        AppLog.w("gps", "Fournisseur $p : aucune position")
+                        tryProviders(list, i + 1, reason)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (!answered) {
+                answered = true
+                AppLog.e("gps", "Fournisseur $p indisponible", e)
+                tryProviders(list, i + 1, reason)
+            }
+        }
+    }
+
+    fun fallback(reason: String) {
+        val providers = ArrayList<String>()
+        if (fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) providers.add(LocationManager.GPS_PROVIDER)
+        if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) providers.add(LocationManager.NETWORK_PROVIDER)
+        AppLog.i("gps", "Repli sur les fournisseurs Android : $providers (précise=$fine)")
+        tryProviders(providers, 0, reason)
+    }
+
     try {
         val client = LocationServices.getFusedLocationProviderClient(ctx)
         val cts = CancellationTokenSource()
-        main.postDelayed({ cts.cancel() }, 20_000)
+        main.postDelayed({ cts.cancel() }, 15_000)
         val priority = if (fine) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
         client.getCurrentLocation(priority, cts.token).addOnCompleteListener { t ->
             val loc = if (t.isSuccessful) t.result else null
@@ -87,7 +133,7 @@ fun requestLocation(ctx: Context, onResult: (LocationResult) -> Unit) {
                 finish(LocationResult.Ok(loc.latitude, loc.longitude, loc.accuracy))
             } else {
                 AppLog.w("gps", "Localisation fusionnée sans résultat : ${t.exception?.message ?: "délai dépassé / aucun signal"}")
-                fallback("pas de signal en 20 s")
+                fallback("pas de signal en 15 s")
             }
         }
     } catch (e: Exception) {

@@ -252,7 +252,7 @@ object PlanRender {
                 p.strokeWidth = 2f * d
                 p.color = col
                 c.drawRect(-w / 2, -h / 2, w / 2, h / 2, p)
-                if (isRack(it.kind)) {
+                if (isRack(it.kind) || it.kind == PlanKind.TGBT || it.kind == PlanKind.GTC || it.kind == PlanKind.CLIM_CAB) {
                     // face avant (accès) : trait épais sur le bord « bas » de l'élément avant rotation
                     p.strokeWidth = 4f * d
                     c.drawLine(-w / 2, h / 2, w / 2, h / 2, p)

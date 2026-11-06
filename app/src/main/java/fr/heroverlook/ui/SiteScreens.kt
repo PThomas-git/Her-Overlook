@@ -243,6 +243,7 @@ fun AccessScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
     val ctx = LocalContext.current
     val locating = remember { mutableStateOf(false) }
+    val locError = remember { mutableStateOf<String?>(null) }
 
     fun fetch() {
         locating.value = true
@@ -253,14 +254,16 @@ fun AccessScreen(vm: AppVM, id: String) {
                     vm.update(id) { it.copy(measuredGps = res.text) }
                     if (res.note != null) vm.toast("Position relevée (${res.note})")
                 }
-                is LocationResult.Fail -> vm.toast(res.reason)
+                is LocationResult.Fail -> locError.value = res.reason
             }
         }
     }
 
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
-        if (r.values.any { it }) fetch() else vm.toast("Permission de localisation refusée")
+        if (r.values.any { it }) fetch()
+        else locError.value = "Permission de localisation refusée : autorise « Position » pour Hér'Overlook dans les réglages de l'appli."
     }
+    LocationErrorDialog(locError.value) { locError.value = null }
 
     Screen("Accès", s.name.ifBlank { s.id }, vm::back) {
         Panel {

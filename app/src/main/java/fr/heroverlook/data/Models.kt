@@ -97,7 +97,17 @@ enum class PlanKind(val label: String, val w: Int, val h: Int, val group: String
     WINDOW("Fenêtre / grille", 100, 10, "Ouvertures"),
     TRAY("Chemin de câbles", 40, 200, "Divers"),
     PILLAR("Poteau", 30, 30, "Divers"),
-    OTHER("Autre", 50, 50, "Divers"),
+    OTHER("Autre", 50, 50, "Divers");
+
+    /**
+     * Vrai si le sens de l'élément compte (face avant, battant, côté d'accès) : baies, TGBT, coffrets, armoire clim, portes.
+     * Faux pour un split de clim, un extincteur, un poteau, un chemin de câbles : l'orientation n'y sert qu'à s'aligner.
+     */
+    val directional: Boolean
+        get() = when (this) {
+            CLIM_SPLIT, EXTINGUISHER, TRAY, PILLAR, OTHER -> false
+            else -> true
+        }
 }
 
 @Serializable
@@ -266,6 +276,8 @@ data class InvSite(
     /** Valeurs pré-remplies par point de contrôle (id du point -> valeur), à valider sur place. */
     val prefill: Map<String, String> = emptyMap(),
     val racks: List<InvRack> = emptyList(),
+    /** Plan de départ du local (d'après un plan existant), à valider et corriger sur place. */
+    val plan: Plan? = null,
 )
 
 fun Site.allPhotos(): List<String> {

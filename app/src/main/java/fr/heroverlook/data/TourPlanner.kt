@@ -21,6 +21,8 @@ fun Site.displayName(): String = name.ifBlank { id }
  * Toutes les distances sont « à vol d'oiseau » (compter environ ×1,3 par la route).
  */
 object TourPlanner {
+    fun fmt(p: LatLon): String = String.format(java.util.Locale.US, "%.6f, %.6f", p.lat, p.lon)
+
     fun km(a: LatLon, b: LatLon): Double {
         val r = 6371.0
         val dLat = Math.toRadians(b.lat - a.lat)

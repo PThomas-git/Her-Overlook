@@ -426,8 +426,14 @@ fun PlanScreen(vm: AppVM, id: String) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 315) % 360) } }) { Icon(Icons.Outlined.RotateLeft, "Tourner de 45° à gauche") }
-                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 45) % 360) } }) { Icon(Icons.Outlined.RotateRight, "Tourner de 45° à droite") }
+                        if (sel.kind.directional) {
+                            // Éléments avec une face avant : rotation fine par pas de 45°
+                            IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 315) % 360) } }) { Icon(Icons.Outlined.RotateLeft, "Tourner de 45° à gauche") }
+                            IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 45) % 360) } }) { Icon(Icons.Outlined.RotateRight, "Tourner de 45° à droite") }
+                        } else {
+                            // Sans face avant (split de clim, extincteur, poteau…) : un seul pivot de 90° pour s'aligner sur un mur
+                            IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 90) % 360) } }) { Icon(Icons.Outlined.RotateRight, "Pivoter de 90°") }
+                        }
                         if (sel.kind == PlanKind.DOOR) {
                             IconButton(onClick = { upd(true) { it.copy(flip = !it.flip) } }) { Icon(Icons.Outlined.SwapVert, "Inverser le côté d'ouverture") }
                         }

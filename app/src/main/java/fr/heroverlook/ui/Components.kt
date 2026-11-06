@@ -239,6 +239,40 @@ fun Panel(
     }
 }
 
+/** Fenêtre d'erreur de position : dit précisément quoi régler et ouvre directement les bons réglages. */
+@Composable
+fun LocationErrorDialog(message: String?, onDismiss: () -> Unit) {
+    if (message == null) return
+    val ctx = LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Position indisponible") },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = {
+                runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)) }
+                onDismiss()
+            }) { Text("Réglages de localisation") }
+        },
+        dismissButton = {
+            Row {
+                TextButton(onClick = {
+                    runCatching {
+                        ctx.startActivity(
+                            android.content.Intent(
+                                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                android.net.Uri.parse("package:${ctx.packageName}"),
+                            )
+                        )
+                    }
+                    onDismiss()
+                }) { Text("Réglages de l'appli") }
+                TextButton(onClick = onDismiss) { Text("Fermer") }
+            }
+        },
+    )
+}
+
 /** États dépliés / repliés des blocs repliables, gardés tant que l'appli tourne (fournis par AppRoot). */
 val LocalUiFlags = staticCompositionLocalOf<androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>?> { null }
 
