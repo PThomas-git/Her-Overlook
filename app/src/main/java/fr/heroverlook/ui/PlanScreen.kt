@@ -384,13 +384,32 @@ fun PlanScreen(vm: AppVM, id: String) {
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Outils en premier : forme du local, import des baies de la fiche, accroche, zoom
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = { showShape = true }) { Text("Forme du local") }
+                    if (s.racks.isNotEmpty()) OutlinedButton(onClick = { importRacks() }) { Text("Importer les baies de la fiche") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Accroche", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    listOf(1, 5, 10, 25).forEach { v ->
+                        FilterChip(
+                            selected = plan.snapCm == v,
+                            onClick = { commit(plan.copy(snapCm = v), record = false) },
+                            label = { Text("$v") },
+                        )
+                    }
+                    Box(Modifier.weight(1f))
+                    IconButton(onClick = { zoomView(1f / 1.4f, Offset(viewSize.width / 2f, viewSize.height / 2f), Offset.Zero) }) { Icon(Icons.Outlined.ZoomOut, "Dézoomer") }
+                    IconButton(onClick = { zoomView(1.4f, Offset(viewSize.width / 2f, viewSize.height / 2f), Offset.Zero) }) { Icon(Icons.Outlined.ZoomIn, "Zoomer") }
+                    IconButton(onClick = { fit() }) { Icon(Icons.Outlined.CenterFocusStrong, "Cadrer le plan") }
+                }
                 if (sel != null) {
                     fun upd(record: Boolean, f: (PlanItem) -> PlanItem) =
                         commit(plan.copy(items = plan.items.map { if (it.id == sel.id) f(it) else it }), record)
                     val snap = plan.snapCm.coerceAtLeast(1)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(sel.kind.label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                        Text("x ${sel.x} · y ${sel.y} cm", style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("x ${sel.x} · y ${sel.y} cm · ${sel.rot}°", style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         IconButton(onClick = { selectedId = null }) { Icon(Icons.Outlined.Close, "Désélectionner") }
                     }
                     Field("Libellé (n° de baie, nom…)", sel.label, { t -> upd(false) { it.copy(label = t) } })
@@ -407,8 +426,8 @@ fun PlanScreen(vm: AppVM, id: String) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(0.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 270) % 360) } }) { Icon(Icons.Outlined.RotateLeft, "Tourner à gauche") }
-                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 90) % 360) } }) { Icon(Icons.Outlined.RotateRight, "Tourner à droite") }
+                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 315) % 360) } }) { Icon(Icons.Outlined.RotateLeft, "Tourner de 45° à gauche") }
+                        IconButton(onClick = { upd(true) { it.copy(rot = (it.rot + 45) % 360) } }) { Icon(Icons.Outlined.RotateRight, "Tourner de 45° à droite") }
                         if (sel.kind == PlanKind.DOOR) {
                             IconButton(onClick = { upd(true) { it.copy(flip = !it.flip) } }) { Icon(Icons.Outlined.SwapVert, "Inverser le côté d'ouverture") }
                         }
@@ -452,26 +471,6 @@ fun PlanScreen(vm: AppVM, id: String) {
                     }
                 }
 
-                // barre d'outils commune
-                Text("Outils", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    OutlinedButton(onClick = { showShape = true }) { Text("Forme du local") }
-                    if (s.racks.isNotEmpty()) OutlinedButton(onClick = { importRacks() }) { Text("Importer les baies de la fiche") }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Accroche", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    listOf(1, 5, 10, 25).forEach { v ->
-                        FilterChip(
-                            selected = plan.snapCm == v,
-                            onClick = { commit(plan.copy(snapCm = v), record = false) },
-                            label = { Text("$v cm") },
-                        )
-                    }
-                    Box(Modifier.weight(1f))
-                    IconButton(onClick = { zoomView(1f / 1.4f, Offset(viewSize.width / 2f, viewSize.height / 2f), Offset.Zero) }) { Icon(Icons.Outlined.ZoomOut, "Dézoomer") }
-                    IconButton(onClick = { zoomView(1.4f, Offset(viewSize.width / 2f, viewSize.height / 2f), Offset.Zero) }) { Icon(Icons.Outlined.ZoomIn, "Zoomer") }
-                    IconButton(onClick = { fit() }) { Icon(Icons.Outlined.CenterFocusStrong, "Cadrer le plan") }
-                }
             }
         }
     }

@@ -63,8 +63,12 @@ object PlanRender {
             k == PlanKind.ENERGY || k == PlanKind.BATTERY || k == PlanKind.ODF
 
     /** Demi-étendues d'un élément après rotation (cm). */
-    private fun halfExtents(it: PlanItem): Pair<Float, Float> =
-        if (it.rot % 180 == 0) Pair(it.w / 2f, it.h / 2f) else Pair(it.h / 2f, it.w / 2f)
+    private fun halfExtents(it: PlanItem): Pair<Float, Float> {
+        val a = Math.toRadians(it.rot.toDouble())
+        val c = abs(cos(a)).toFloat()
+        val s = abs(sin(a)).toFloat()
+        return Pair(it.w / 2f * c + it.h / 2f * s, it.w / 2f * s + it.h / 2f * c)
+    }
 
     /** Rectangle englobant (cm) du contour et des éléments, ou null si le plan est vide. */
     fun bounds(plan: Plan): RectF? {

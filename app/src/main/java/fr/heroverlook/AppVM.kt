@@ -45,7 +45,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
     var tourFarFirst by mutableStateOf(prefs.getBoolean("farFirst", true))
     var tourDetourKm by mutableIntStateOf(prefs.getInt("detourKm", 5))
 
-    /** « lat, lon » si le départ est ma position ; vide = agence de Saint-Aunès (clés). */
+    /** « lat, lon » si le départ est ma position ; vide = départ par défaut (centre de Montpellier). */
     var tourBaseHere by mutableStateOf(prefs.getString("here", "") ?: "")
 
     /** Plan : une liste d'identifiants de sites par jour. */
@@ -53,9 +53,14 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         addAll(TourPlanner.decodePlan(prefs.getString("plan", "") ?: ""))
     }
 
+    /** Sites retirés à la main de la tournée : ils n'y reviennent pas au recalcul tant qu'ils ne sont pas rajoutés. */
+    val tourExcluded = mutableStateListOf<String>().apply {
+        addAll((prefs.getString("excluded", "") ?: "").split("\n").filter { it.isNotBlank() })
+    }
+
     fun tourBase(): LatLon {
         val m = Regex("(-?\\d+\\.\\d+)\\s*,\\s*(-?\\d+\\.\\d+)").find(tourBaseHere)
-        return if (m != null) LatLon(m.groupValues[1].toDouble(), m.groupValues[2].toDouble()) else TourPlanner.AGENCY
+        return if (m != null) LatLon(m.groupValues[1].toDouble(), m.groupValues[2].toDouble()) else TourPlanner.DEFAULT_START
     }
 
     private fun saveTour() {
@@ -63,6 +68,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
             .putInt("days", tourDays).putBoolean("popOnly", tourPopOnly).putBoolean("farFirst", tourFarFirst)
             .putInt("detourKm", tourDetourKm).putString("here", tourBaseHere)
             .putString("plan", TourPlanner.encodePlan(tourPlan.toList()))
+            .putString("excluded", tourExcluded.joinToString("\n"))
             .apply()
     }
 
@@ -74,7 +80,27 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
 
     /** Sites candidats : avec coordonnées, pas terminés (les sites finis sont déclassés), POP seulement si demandé. */
     fun tourCandidates(): List<Site> = sites.values.filter {
-        it.latLon() != null && it.status != VisitStatus.DONE && (!tourPopOnly || it.kind.isPop)
+        it.latLon() != null && it.status != VisitStatus.DONE && (!tourPopOnly || it.kind.isPop) && it.id !in tourExcluded
+    }
+
+    /** Retire un site de la tournée (et le garde à l'écart des prochains recalculs). */
+    fun removeFromTour(id: String) {
+        if (id !in tourExcluded) tourExcluded.add(id)
+        setTourPlan(tourPlan.map { d -> d.filter { it != id } })
+    }
+
+    /** Ajoute (ou déplace) un site dans le jour [day], à la position qui coûte le moins de détour. */
+    fun addToDay(day: Int, site: Site) {
+        tourExcluded.remove(site.id)
+        val plan = tourPlan.map { d -> d.filter { it != site.id } }.toMutableList()
+        if (plan.isEmpty()) plan.add(emptyList())
+        val di = day.coerceIn(0, plan.size - 1)
+        val valid = plan[di].filter { sites[it]?.let { s -> s.status != VisitStatus.DONE } == true }.toMutableList()
+        val route = valid.mapNotNull { sites[it] }
+        val idx = TourPlanner.bestInsertIndex(route, site, tourBase())
+        valid.add(idx.coerceIn(0, valid.size), site.id)
+        plan[di] = valid
+        setTourPlan(plan)
     }
 
     /** Recalcule tout le plan avec les réglages actuels (écrase l'ordre modifié à la main). */

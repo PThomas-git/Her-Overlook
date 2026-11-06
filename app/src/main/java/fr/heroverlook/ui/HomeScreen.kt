@@ -247,31 +247,34 @@ fun HomeScreen(vm: AppVM) {
 private fun Overview(all: List<Site>) {
     val done = all.count { it.status == VisitStatus.DONE }
     val doing = all.count { it.status == VisitStatus.IN_PROGRESS }
-    val nc = all.sumOf { it.stats().nc }
-    val res = all.sumOf { it.stats().reserve }
-    val photos = all.sumOf { it.allPhotos().size }
+    val todo = all.size - done - doing
     val toValidate = all.sumOf { s -> s.known.count { it.state == KnownState.TODO } }
     Panel(accent = MaterialTheme.colorScheme.primary) {
-        Text("Tournée", style = MaterialTheme.typography.titleMedium)
+        Text("${all.size} sites", style = MaterialTheme.typography.titleMedium)
         val target = if (all.isEmpty()) 0f else done.toFloat() / all.size
         val shown by animateFloatAsState(target, tween(800), label = "overview")
         LinearProgressIndicator(progress = { shown }, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Counter("${done}/${all.size}", "terminés")
-            Counter("$doing", "en cours")
-            if (toValidate > 0) Counter("$toValidate", "à confirmer", MaterialTheme.colorScheme.secondary)
-            Counter("$res", "réserves", Verdict.RESERVE.color())
-            Counter("$nc", "non conf.", Verdict.NC.color())
-            Counter("$photos", "photos")
+        // Quatre compteurs de même largeur, une seule ligne chacun : aucun chevauchement possible.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Counter("$done", "Terminés", Verdict.OK.color(), Modifier.weight(1f))
+            Counter("$doing", "En cours", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            Counter("$todo", "À faire", MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            Counter("$toValidate", "À confirmer", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun Counter(value: String, label: String, color: Color = MaterialTheme.colorScheme.onSurface) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleMedium, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Counter(value: String, label: String, color: Color, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleMedium, color = color, maxLines = 1)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -317,21 +320,21 @@ private fun SiteCard(s: Site, modifier: Modifier = Modifier, onClick: () -> Unit
             overflow = TextOverflow.Ellipsis,
         )
         LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        // Une seule ligne d'aperçu : avancement à gauche, informations à confirmer à droite (pas de détail réserves / NC / photos ici).
         val toValidate = s.known.count { it.state == KnownState.TODO }
-        if (toValidate > 0) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                Text(
-                    "$toValidate info(s) à confirmer",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "${st.answered}/${st.total} points",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            if (toValidate > 0) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(14.dp))
+                    Text("$toValidate à confirmer", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, maxLines = 1)
+                }
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("${st.answered}/${st.total} points", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (st.reserve > 0) Text("${st.reserve} réserve(s)", style = MaterialTheme.typography.labelMedium, color = Verdict.RESERVE.color())
-            if (st.nc > 0) Text("${st.nc} NC", style = MaterialTheme.typography.labelMedium, color = Verdict.NC.color())
         }
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -57,6 +58,7 @@ fun TourScreen(vm: AppVM) {
     val ctx = LocalContext.current
     var selDay by rememberSaveable { mutableStateOf(0) }
     var locating by remember { mutableStateOf(false) }
+    var card by remember { mutableStateOf<Site?>(null) } // cartouche du site touché
 
     LaunchedEffect(Unit) { if (vm.tourPlan.isEmpty()) vm.planTour() }
 
@@ -118,7 +120,7 @@ fun TourScreen(vm: AppVM) {
                 FilterChip(
                     selected = vm.tourBaseHere.isBlank(),
                     onClick = { vm.changeTourBase(""); selDay = 0 },
-                    label = { Text("Agence Saint-Aunès (clés)") },
+                    label = { Text("Montpellier (par défaut)") },
                 )
                 FilterChip(
                     selected = vm.tourBaseHere.isNotBlank(),
@@ -127,7 +129,7 @@ fun TourScreen(vm: AppVM) {
                 )
             }
             Text(
-                if (vm.tourBaseHere.isBlank()) "Position de l'agence approximative (centre de Saint-Aunès)." else "Départ : ${vm.tourBaseHere}",
+                if (vm.tourBaseHere.isBlank()) "Départ par défaut : centre de Montpellier. Choisis « Ma position » pour partir d'où tu es." else "Départ : ${vm.tourBaseHere}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -203,7 +205,7 @@ fun TourScreen(vm: AppVM) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TourMap(route, otherDays, suggestions.map { it.site }, base) { vm.go("site/${it.id}") }
+            TourMap(route, otherDays, suggestions.map { it.site }, base) { card = it }
             OutlinedButton(
                 onClick = {
                     val stops = route.take(10)
@@ -232,7 +234,7 @@ fun TourScreen(vm: AppVM) {
                 val prev = if (i == 0) base else route[i - 1].latLon()!!
                 val leg = TourPlanner.km(prev, s.latLon()!!)
                 val toValidate = s.known.count { it.state == KnownState.TODO }
-                Panel(accent = statusColor(s.status), onClick = { vm.go("site/${s.id}") }) {
+                Panel(accent = statusColor(s.status), onClick = { card = s }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("${i + 1}", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Column(Modifier.weight(1f)) {
@@ -292,7 +294,7 @@ fun TourScreen(vm: AppVM) {
                 if (group.isNotEmpty()) {
                     Text(phase.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     group.forEach { sg ->
-                        Panel(accent = MaterialTheme.colorScheme.secondary, onClick = { vm.go("site/${sg.site.id}") }) {
+                        Panel(accent = MaterialTheme.colorScheme.secondary, onClick = { card = sg.site }) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Column(Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -324,6 +326,19 @@ fun TourScreen(vm: AppVM) {
                 Text("Nouveaux sites ou sites rouverts : touche « Recalculer la tournée » pour les inclure.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        val excluded = vm.tourExcluded.mapNotNull { vm.sites[it] }
+        if (excluded.isNotEmpty()) {
+            SectionTitle("Retirés à la main (${excluded.size})")
+            excluded.forEach { s ->
+                Panel(onClick = { card = s }) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KindBadge(s.kind)
+                        Text(s.displayName(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text("Ajouter", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
         if (done.isNotEmpty()) {
             SectionTitle("Terminés, retirés de la tournée (${done.size})")
             done.forEach { s ->
@@ -343,6 +358,89 @@ fun TourScreen(vm: AppVM) {
                     Text(s.displayName(), style = MaterialTheme.typography.titleSmall)
                     Text("Relever la position dans « Accès » du site.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+    }
+
+    card?.let { s ->
+        TourSiteSheet(
+            vm = vm, site = s, day = day, days = days, base = base,
+            onDismiss = { card = null },
+        )
+    }
+}
+
+/** Cartouche d'un site : nom, itinéraire, ajout / retrait du jour affiché, accès à la fiche. */
+@Composable
+private fun TourSiteSheet(vm: AppVM, site: Site, day: Int, days: List<List<Site>>, base: fr.heroverlook.data.LatLon, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val dayIdx = days.indexOfFirst { d -> d.any { it.id == site.id } }
+    val inThisDay = dayIdx == day
+    val position = if (dayIdx >= 0) days[dayIdx].indexOfFirst { it.id == site.id } else -1
+    val toValidate = site.known.count { it.state == KnownState.TODO }
+    val from = site.latLon()?.let { p -> TourPlanner.km(base, p) }
+
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                KindBadge(site.kind)
+                Text(site.displayName(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            }
+            Text(
+                listOf(site.postalCode + " " + site.city, site.address).map { it.trim() }.filter { it.isNotBlank() }.joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                buildList {
+                    add(site.status.label)
+                    add(
+                        when {
+                            dayIdx >= 0 -> "Jour ${dayIdx + 1}, étape ${position + 1}"
+                            site.id in vm.tourExcluded -> "Retiré de la tournée"
+                            else -> "Hors tournée"
+                        }
+                    )
+                    if (from != null) add("${"%.0f".format(from)} km du départ")
+                    if (toValidate > 0) add("$toValidate info(s) à confirmer")
+                }.joinToString(" · "),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+
+            Button(
+                onClick = {
+                    try {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${site.lat},${site.lon}")))
+                    } catch (e: Exception) {
+                        vm.toast("Aucune application de navigation")
+                    }
+                },
+                enabled = site.latLon() != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Outlined.Navigation, null)
+                Text("  Itinéraire")
+            }
+            if (inThisDay) {
+                OutlinedButton(onClick = { vm.removeFromTour(site.id); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Retirer du jour ${day + 1}")
+                }
+            } else {
+                OutlinedButton(
+                    onClick = { vm.addToDay(day, site); onDismiss() },
+                    enabled = site.latLon() != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (dayIdx >= 0) "Déplacer vers le jour ${day + 1}" else "Ajouter au jour ${day + 1}")
+                }
+            }
+            OutlinedButton(onClick = { onDismiss(); vm.go("site/${site.id}") }, modifier = Modifier.fillMaxWidth()) {
+                Text("Ouvrir la fiche du site")
             }
         }
     }

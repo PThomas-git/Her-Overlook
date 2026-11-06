@@ -21,8 +21,8 @@ fun Site.displayName(): String = name.ifBlank { id }
  * Toutes les distances sont « à vol d'oiseau » (compter environ ×1,3 par la route).
  */
 object TourPlanner {
-    /** Agence Hérault Télécom de Saint-Aunès (retrait des clés). Position approximative du centre de la commune. */
-    val AGENCY = LatLon(43.652, 3.980)
+    /** Départ par défaut quand « ma position » n'est pas choisie : centre de Montpellier. */
+    val DEFAULT_START = LatLon(43.6108, 3.8767)
 
     fun km(a: LatLon, b: LatLon): Double {
         val r = 6371.0
@@ -51,10 +51,99 @@ object TourPlanner {
     fun hours(km: Double): Double = km * 1.3 / 50.0
 
     /**
-     * Ordre de visite d'une journée : plus proche voisin puis amélioration 2-opt.
-     * Avec [farFirst] et un départ connu, on commence par le site le plus éloigné du départ puis on se rapproche.
+     * Ordre de visite d'une journée avec retour au départ : on optimise d'abord la **boucle complète** (départ → sites → départ)
+     * par plusieurs constructions au plus proche voisin suivies d'une amélioration 2-opt, et on garde la plus courte.
+     * Le sens de parcours est choisi ensuite : la longueur totale est identique dans les deux sens, donc « commencer par
+     * le plus éloigné » ([farFirst]) ne coûte aucun kilomètre et fait finir près du départ.
+     * Sans départ connu, on retombe sur un chemin ouvert simple.
      */
     fun orderDay(sites: List<Site>, base: LatLon?, farFirst: Boolean): List<Site> {
+        if (sites.size <= 1) return sites
+        if (base == null) return orderOpen(sites, null, farFirst)
+        val pts = sites.map { it.latLon()!! }
+        val n = pts.size
+        fun d(a: Int, b: Int): Double {
+            val pa = if (a < 0) base else pts[a]
+            val pb = if (b < 0) base else pts[b]
+            return km(pa, pb)
+        }
+
+        var best: List<Int>? = null
+        var bestLen = Double.MAX_VALUE
+        for (first in 0 until n) {
+            // construction au plus proche voisin en partant de [first]
+            val remaining = (0 until n).filter { it != first }.toMutableList()
+            val seq = ArrayList<Int>()
+            seq.add(-1) // -1 = départ (fixe, aussi point d'arrivée)
+            seq.add(first)
+            var cur = first
+            while (remaining.isNotEmpty()) {
+                val c = cur
+                val nx = remaining.minByOrNull { d(c, it) }!!
+                seq.add(nx)
+                remaining.remove(nx)
+                cur = nx
+            }
+            // 2-opt sur la boucle fermée (l'arête de retour vers le départ compte)
+            var improved = true
+            var guard = 0
+            while (improved && guard++ < 80) {
+                improved = false
+                for (i in 1 until seq.size - 1) {
+                    for (j in i + 1 until seq.size) {
+                        val a = seq[i - 1]
+                        val b = seq[i]
+                        val c = seq[j]
+                        val e = seq[(j + 1) % seq.size]
+                        val before = d(a, b) + d(c, e)
+                        val after = d(a, c) + d(b, e)
+                        if (after + 1e-9 < before) {
+                            seq.subList(i, j + 1).reverse()
+                            improved = true
+                        }
+                    }
+                }
+            }
+            var len = 0.0
+            for (k in seq.indices) len += d(seq[k], seq[(k + 1) % seq.size])
+            if (len < bestLen - 1e-9) {
+                bestLen = len
+                best = seq.drop(1)
+            }
+        }
+        val order = best!!.toMutableList()
+        val firstFar = d(-1, order.first())
+        val lastFar = d(-1, order.last())
+        if (farFirst && firstFar < lastFar) order.reverse()
+        if (!farFirst && firstFar > lastFar) order.reverse()
+        return order.map { sites[it] }
+    }
+
+    /** Position d'insertion la moins coûteuse d'un site dans une journée (0 = avant le premier, taille = après le dernier). */
+    fun bestInsertIndex(route: List<Site>, c: Site, base: LatLon?): Int {
+        val cp = c.latLon() ?: return route.size
+        val pts = route.mapNotNull { it.latLon() }
+        var bestIdx = pts.size
+        var bestCost = Double.MAX_VALUE
+        for (i in 0..pts.size) {
+            val prev: LatLon? = if (i == 0) base else pts[i - 1]
+            val next: LatLon? = if (i == pts.size) base else pts[i]
+            val cost = when {
+                prev != null && next != null -> km(prev, cp) + km(cp, next) - km(prev, next)
+                prev != null -> km(prev, cp)
+                next != null -> km(cp, next)
+                else -> 0.0
+            }
+            if (cost < bestCost) {
+                bestCost = cost
+                bestIdx = i
+            }
+        }
+        return bestIdx
+    }
+
+    /** Chemin ouvert (sans départ connu) : plus proche voisin depuis le site le plus à l'ouest, puis 2-opt. */
+    private fun orderOpen(sites: List<Site>, base: LatLon?, farFirst: Boolean): List<Site> {
         if (sites.size <= 1) return sites
         val pts = sites.map { it.latLon()!! }
         val remaining = sites.indices.toMutableList()
