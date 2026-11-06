@@ -183,6 +183,7 @@ fun HomeScreen(vm: AppVM) {
         Box(Modifier.padding(pad).fillMaxSize()) {
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = vm.homeListState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {

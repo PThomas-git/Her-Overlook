@@ -27,7 +27,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import fr.heroverlook.ui.AccessScreen
 import fr.heroverlook.ui.ChecklistScreen
 import fr.heroverlook.ui.DocumentsScreen
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import fr.heroverlook.ui.HerTheme
+import fr.heroverlook.ui.LocalRoute
+import fr.heroverlook.ui.LocalScrolls
 import fr.heroverlook.ui.HomeScreen
 import fr.heroverlook.ui.KnownScreen
 import fr.heroverlook.ui.LayoutScreen
@@ -66,6 +71,10 @@ fun AppRoot(vm: AppVM = viewModel()) {
     BackHandler(enabled = vm.nav.size > 1) { vm.back() }
 
     // Sens de la transition : on avance (nouvel écran empilé) ou on revient.
+    // Positions de défilement conservées par route tant qu'elle est dans la pile (retour = même endroit qu'avant).
+    val scrolls = remember { mutableMapOf<String, ScrollState>() }
+    LaunchedEffect(vm.nav.size) { scrolls.keys.retainAll(vm.nav.toSet()) }
+
     val depth = vm.nav.size
     var prevDepth by remember { mutableIntStateOf(depth) }
     val forward = depth >= prevDepth
@@ -86,7 +95,9 @@ fun AppRoot(vm: AppVM = viewModel()) {
             }
         },
         label = "navigation",
-    ) { route -> Route(vm, route) }
+    ) { route ->
+        CompositionLocalProvider(LocalRoute provides route, LocalScrolls provides scrolls) { Route(vm, route) }
+    }
 }
 
 @Composable

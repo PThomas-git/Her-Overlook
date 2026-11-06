@@ -57,12 +57,12 @@ import fr.heroverlook.data.requestLocation
 fun TourScreen(vm: AppVM) {
     val ctx = LocalContext.current
     var selDay by rememberSaveable { mutableStateOf(0) }
-    var locating by remember { mutableStateOf(false) }
     var card by remember { mutableStateOf<Site?>(null) } // cartouche du site touché
 
     LaunchedEffect(Unit) { if (vm.tourPlan.isEmpty()) vm.planTour() }
 
-    val base = vm.tourBase()
+    // Pas de point de départ imposé : chaque journée est une boucle fermée entre ses sites.
+    val base: fr.heroverlook.data.LatLon? = null
 
     // Jours effectifs : les sites terminés sont déclassés automatiquement.
     val days: List<List<Site>> = vm.tourPlan.map { ids ->
@@ -82,30 +82,9 @@ fun TourScreen(vm: AppVM) {
         TourPlanner.suggestions(route, candidates, base, vm.tourDetourKm.toDouble())
     } else emptyList()
 
-    fun fetch() {
-        locating = true
-        requestLocation(ctx) { res ->
-            locating = false
-            when (res) {
-                is LocationResult.Ok -> {
-                    vm.changeTourBase(res.text)
-                    selDay = 0
-                    vm.toast("Départ : ta position ${res.text}" + (res.note?.let { " — $it" } ?: ""))
-                }
-                is LocationResult.Fail -> vm.toast(res.reason)
-            }
-        }
-    }
-
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
-        if (r.values.any { it }) fetch() else vm.toast("Permission de localisation refusée")
-    }
-
     Screen("Tournée", "${days.sumOf { it.size }} site(s) sur ${days.size.coerceAtLeast(1)} jour(s)", vm::back) {
         // ---------------- Réglages ----------------
         Panel(accent = MaterialTheme.colorScheme.primary) {
-            Text("Réglages", style = MaterialTheme.typography.titleMedium)
-            Text("Nombre de jours", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 (1..5).forEach { n ->
                     FilterChip(
@@ -115,25 +94,6 @@ fun TourScreen(vm: AppVM) {
                     )
                 }
             }
-            Text("Départ et retour", style = MaterialTheme.typography.labelLarge)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                FilterChip(
-                    selected = vm.tourBaseHere.isBlank(),
-                    onClick = { vm.changeTourBase(""); selDay = 0 },
-                    label = { Text("Montpellier (par défaut)") },
-                )
-                FilterChip(
-                    selected = vm.tourBaseHere.isNotBlank(),
-                    onClick = { permLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
-                    label = { Text(if (locating) "Recherche…" else "Ma position") },
-                )
-            }
-            Text(
-                if (vm.tourBaseHere.isBlank()) "Départ par défaut : centre de Montpellier. Choisis « Ma position » pour partir d'où tu es." else "Départ : ${vm.tourBaseHere}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text("Organisation", style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(
                     selected = vm.tourFarFirst,
@@ -162,8 +122,8 @@ fun TourScreen(vm: AppVM) {
                 Text("Recalculer la tournée")
             }
             Text(
-                "Les sites terminés sortent automatiquement de la tournée. Les flèches ▲ ▼ ajustent l'ordre à la main (conservé jusqu'au prochain recalcul).",
-                style = MaterialTheme.typography.bodySmall,
+                "Terminés exclus automatiquement · ▲ ▼ pour ajuster l'ordre.",
+                style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -200,7 +160,7 @@ fun TourScreen(vm: AppVM) {
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    "Distances à vol d'oiseau, retour au départ compris ; temps estimé avec ×1,3 à 50 km/h de moyenne.",
+                    "Boucle fermée entre les sites, distances à vol d'oiseau ; temps estimé avec ×1,3 à 50 km/h de moyenne.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -212,7 +172,6 @@ fun TourScreen(vm: AppVM) {
                     val dest = stops.last()
                     val wp = stops.dropLast(1).joinToString("|") { "${it.lat},${it.lon}" }
                     val sb = StringBuilder("https://www.google.com/maps/dir/?api=1&travelmode=driving")
-                    sb.append("&origin=${base.lat},${base.lon}")
                     sb.append("&destination=${dest.lat},${dest.lon}")
                     if (wp.isNotEmpty()) sb.append("&waypoints=").append(Uri.encode(wp))
                     AppLog.i("tour", "Ouverture du jour ${day + 1} dans Maps (${stops.size} étapes)")
@@ -231,8 +190,7 @@ fun TourScreen(vm: AppVM) {
             // ---------------- Étapes ----------------
             SectionTitle("Étapes du jour ${day + 1}")
             route.forEachIndexed { i, s ->
-                val prev = if (i == 0) base else route[i - 1].latLon()!!
-                val leg = TourPlanner.km(prev, s.latLon()!!)
+                val leg = if (i == 0) null else TourPlanner.km(route[i - 1].latLon()!!, s.latLon()!!)
                 val toValidate = s.known.count { it.state == KnownState.TODO }
                 Panel(accent = statusColor(s.status), onClick = { card = s }) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -243,7 +201,7 @@ fun TourScreen(vm: AppVM) {
                                 Text(s.displayName(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                             }
                             Text(
-                                listOf(s.city, s.status.label, "+${"%.1f".format(leg)} km").filter { it.isNotBlank() }.joinToString(" · "),
+                                listOf(s.city, s.status.label, leg?.let { "+${"%.1f".format(it)} km" } ?: "").filter { it.isNotBlank() }.joinToString(" · "),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -302,7 +260,8 @@ fun TourScreen(vm: AppVM) {
                                         Text(sg.site.displayName(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                                     }
                                     Text(
-                                        "+${"%.1f".format(sg.detourKm)} km de détour · ${sg.between}",
+                                        if (sg.phase == TourPlanner.Phase.DURING) "+${"%.1f".format(sg.detourKm)} km de détour · ${sg.between}"
+                                        else "${sg.between} · à ${"%.1f".format(sg.detourKm)} km",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -364,7 +323,7 @@ fun TourScreen(vm: AppVM) {
 
     card?.let { s ->
         TourSiteSheet(
-            vm = vm, site = s, day = day, days = days, base = base,
+            vm = vm, site = s, day = day, days = days,
             onDismiss = { card = null },
         )
     }
@@ -372,14 +331,13 @@ fun TourScreen(vm: AppVM) {
 
 /** Cartouche d'un site : nom, itinéraire, ajout / retrait du jour affiché, accès à la fiche. */
 @Composable
-private fun TourSiteSheet(vm: AppVM, site: Site, day: Int, days: List<List<Site>>, base: fr.heroverlook.data.LatLon, onDismiss: () -> Unit) {
+private fun TourSiteSheet(vm: AppVM, site: Site, day: Int, days: List<List<Site>>, onDismiss: () -> Unit) {
     val ctx = LocalContext.current
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val dayIdx = days.indexOfFirst { d -> d.any { it.id == site.id } }
     val inThisDay = dayIdx == day
     val position = if (dayIdx >= 0) days[dayIdx].indexOfFirst { it.id == site.id } else -1
     val toValidate = site.known.count { it.state == KnownState.TODO }
-    val from = site.latLon()?.let { p -> TourPlanner.km(base, p) }
 
     androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -405,7 +363,6 @@ private fun TourSiteSheet(vm: AppVM, site: Site, day: Int, days: List<List<Site>
                             else -> "Hors tournée"
                         }
                     )
-                    if (from != null) add("${"%.0f".format(from)} km du départ")
                     if (toValidate > 0) add("$toValidate info(s) à confirmer")
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.labelLarge,

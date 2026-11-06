@@ -52,6 +52,27 @@ fun KnownScreen(vm: AppVM, id: String) {
     }
 }
 
+/** Bouton à bascule : plein et coloré quand il est sélectionné, simple contour sinon (pas de coche en plus). */
+@Composable
+private fun StateButton(
+    selected: Boolean,
+    color: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+) {
+    if (selected) {
+        androidx.compose.material3.Button(
+            onClick = onClick,
+            modifier = modifier,
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = color, contentColor = onVerdictColor()),
+            content = content,
+        )
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier, content = content)
+    }
+}
+
 @Composable
 private fun KnownCard(k: Known, update: ((Known) -> Known) -> Unit) {
     val accent = when (k.state) {
@@ -66,14 +87,16 @@ private fun KnownCard(k: Known, update: ((Known) -> Known) -> Unit) {
             Text(k.source, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
+            StateButton(
+                selected = k.state == KnownState.OK, color = Verdict.OK.color(),
                 onClick = { update { it.copy(state = if (it.state == KnownState.OK) KnownState.TODO else KnownState.OK) } },
                 modifier = Modifier.weight(1f),
             ) {
                 Icon(Icons.Outlined.Check, null)
-                Text(if (k.state == KnownState.OK) "  Confirmé ✓" else "  Confirmé")
+                Text("  Confirmé")
             }
-            OutlinedButton(
+            StateButton(
+                selected = k.state == KnownState.FIX, color = Verdict.RESERVE.color(),
                 onClick = { update { it.copy(state = if (it.state == KnownState.FIX) KnownState.TODO else KnownState.FIX) } },
                 modifier = Modifier.weight(1f),
             ) {

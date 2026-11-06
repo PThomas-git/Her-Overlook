@@ -21,9 +21,6 @@ fun Site.displayName(): String = name.ifBlank { id }
  * Toutes les distances sont « à vol d'oiseau » (compter environ ×1,3 par la route).
  */
 object TourPlanner {
-    /** Départ par défaut quand « ma position » n'est pas choisie : centre de Montpellier. */
-    val DEFAULT_START = LatLon(43.6108, 3.8767)
-
     fun km(a: LatLon, b: LatLon): Double {
         val r = 6371.0
         val dLat = Math.toRadians(b.lat - a.lat)
@@ -43,7 +40,10 @@ object TourPlanner {
             if (prev != null) total += km(prev, p)
             prev = p
         }
-        if (returnToBase && base != null) total += km(pts.last(), base)
+        if (returnToBase) {
+            if (base != null) total += km(pts.last(), base)
+            else if (pts.size > 1) total += km(pts.last(), pts.first()) // boucle fermée entre les sites
+        }
         return total
     }
 
@@ -59,7 +59,7 @@ object TourPlanner {
      */
     fun orderDay(sites: List<Site>, base: LatLon?, farFirst: Boolean): List<Site> {
         if (sites.size <= 1) return sites
-        if (base == null) return orderOpen(sites, null, farFirst)
+        if (base == null) return orderLoop(sites, farFirst)
         val pts = sites.map { it.latLon()!! }
         val n = pts.size
         fun d(a: Int, b: Int): Double {
@@ -140,6 +140,66 @@ object TourPlanner {
             }
         }
         return bestIdx
+    }
+
+    /**
+     * Boucle fermée entre les seuls sites (aucun point de départ imposé) : plusieurs constructions au plus proche voisin
+     * suivies d'un 2-opt, on garde la plus courte. Avec [farFirst] la journée commence par le site le plus éloigné du centre
+     * des sites, sinon par le plus central ; le sens retenu est celui dont le premier trajet est le plus court.
+     */
+    private fun orderLoop(sites: List<Site>, farFirst: Boolean): List<Site> {
+        val n = sites.size
+        if (n <= 2) return sites
+        val pts = sites.map { it.latLon()!! }
+        fun d(a: Int, b: Int): Double = km(pts[a], pts[b])
+
+        var best: List<Int>? = null
+        var bestLen = Double.MAX_VALUE
+        for (first in 0 until n) {
+            val remaining = (0 until n).filter { it != first }.toMutableList()
+            val seq = ArrayList<Int>()
+            seq.add(first)
+            var cur = first
+            while (remaining.isNotEmpty()) {
+                val c = cur
+                val nx = remaining.minByOrNull { d(c, it) }!!
+                seq.add(nx)
+                remaining.remove(nx)
+                cur = nx
+            }
+            var improved = true
+            var guard = 0
+            while (improved && guard++ < 80) {
+                improved = false
+                for (i in 1 until n - 1) {
+                    for (j in i + 1 until n) {
+                        val a = seq[i - 1]
+                        val b = seq[i]
+                        val c = seq[j]
+                        val e = seq[(j + 1) % n]
+                        if (d(a, c) + d(b, e) + 1e-9 < d(a, b) + d(c, e)) {
+                            seq.subList(i, j + 1).reverse()
+                            improved = true
+                        }
+                    }
+                }
+            }
+            var len = 0.0
+            for (k in 0 until n) len += d(seq[k], seq[(k + 1) % n])
+            if (len < bestLen - 1e-9) {
+                bestLen = len
+                best = ArrayList(seq)
+            }
+        }
+        val loop = best!!
+        val centre = LatLon(pts.map { it.lat }.average(), pts.map { it.lon }.average())
+        val start = if (farFirst) loop.maxByOrNull { km(pts[it], centre) }!! else loop.minByOrNull { km(pts[it], centre) }!!
+        val k = loop.indexOf(start)
+        var order = loop.drop(k) + loop.take(k)
+        if (d(order[0], order[1]) > d(order[0], order.last())) {
+            order = listOf(order[0]) + order.drop(1).reversed()
+        }
+        return order.map { sites[it] }
     }
 
     /** Chemin ouvert (sans départ connu) : plus proche voisin depuis le site le plus à l'ouest, puis 2-opt. */

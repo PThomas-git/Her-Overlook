@@ -43,7 +43,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -112,6 +114,10 @@ val ExpandEnter: EnterTransition =
 val ExpandExit: ExitTransition =
     fadeOut(tween(140)) + shrinkVertically(tween(220, easing = FastOutSlowInEasing))
 
+/** Route de l'écran affiché et mémoire des positions de défilement par route (fournis par AppRoot). */
+val LocalRoute = staticCompositionLocalOf<String?> { null }
+val LocalScrolls = staticCompositionLocalOf<MutableMap<String, ScrollState>?> { null }
+
 @Composable
 fun Screen(
     title: String,
@@ -120,6 +126,11 @@ fun Screen(
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Au retour sur un écran, on retrouve sa position de défilement (l'état est gardé tant que la route est dans la pile).
+    val route = LocalRoute.current
+    val scrolls = LocalScrolls.current
+    val fallback = rememberScrollState()
+    val scroll = if (route != null && scrolls != null) scrolls.getOrPut(route) { ScrollState(0) } else fallback
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -149,7 +160,7 @@ fun Screen(
             Modifier
                 .padding(pad)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scroll)
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
