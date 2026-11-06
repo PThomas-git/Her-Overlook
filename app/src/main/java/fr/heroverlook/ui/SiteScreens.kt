@@ -93,20 +93,33 @@ fun SiteScreen(vm: AppVM, id: String) {
             }
         },
     ) {
+        // En-tête : l'essentiel sur deux lignes ; le détail de l'inventaire est replié.
         Panel(accent = statusColor(s.status)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 KindBadge(s.kind)
-                Text(listOf(s.postalCode, s.city).filter { it.isNotBlank() }.joinToString(" "), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    listOf(s.postalCode, s.city).filter { it.isNotBlank() }.joinToString(" "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
             }
-            InfoLine("Adresse", s.address)
+            if (s.address.isNotBlank()) {
+                Text(s.address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            }
+            if (s.inventoryNote.isNotBlank()) {
+                Text("À vérifier : ${s.inventoryNote}", style = MaterialTheme.typography.bodySmall, color = Verdict.RESERVE.color())
+            }
+        }
+        Collapsible(
+            title = "Détails d'inventaire",
+            summary = listOf(s.tier, s.locCode).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null },
+        ) {
             InfoLine("Code LOC", s.locCode)
             InfoLine("Gamme", s.tier)
             InfoLine("Actifs", s.activeEquipment)
             InfoLine("Refroid.", s.cooling)
             InfoLine("AE / onduleur", s.power)
-            if (s.inventoryNote.isNotBlank()) {
-                Text("À vérifier : ${s.inventoryNote}", style = MaterialTheme.typography.bodySmall, color = Verdict.RESERVE.color())
-            }
         }
 
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -160,32 +173,36 @@ fun SiteScreen(vm: AppVM, id: String) {
             }
         }
 
-        SectionTitle("Relevé")
-        TileRow {
-            Tile(Icons.Outlined.Lock, "Accès", accessSummary(s), Modifier.weight(1f)) { vm.go("site/$id/access") }
-            Tile(Icons.Outlined.Checklist, "Check-list", "${st.answered}/${st.total} points", Modifier.weight(1f)) { vm.go("site/$id/checklist") }
-        }
-        TileRow {
-            if (s.kind.isPop) {
-                Tile(Icons.Outlined.Architecture, "Aménagement", "$layoutFilled élément(s) · 3.4", Modifier.weight(1f)) { vm.go("site/$id/layout") }
-            }
-            Tile(
-                Icons.Outlined.Inventory2,
-                if (s.kind.isPop) "Baies" else "Équipements",
-                "${s.racks.size} baie(s) · ${s.racks.sumOf { it.equipments.size }} équip. · 3.6",
-                Modifier.weight(1f),
-            ) { vm.go("site/$id/racks") }
-            if (!s.kind.isPop) Tile(Icons.Outlined.Description, "Documents", "présence sur site", Modifier.weight(1f)) { vm.go("site/$id/docs") }
-        }
-        TileRow {
-            if (s.kind.isPop) Tile(Icons.Outlined.Description, "Documents", "présence sur site", Modifier.weight(1f)) { vm.go("site/$id/docs") }
-            Tile(Icons.Outlined.Groups, "Usagers", "${s.usagers.size} · 3.12", Modifier.weight(1f)) { vm.go("site/$id/usagers") }
-            if (!s.kind.isPop) Tile(Icons.Outlined.PhotoLibrary, "Photos", "${s.generalPhotos.size} générales", Modifier.weight(1f)) { vm.go("site/$id/photos") }
-        }
-        TileRow {
-            if (s.kind.isPop) Tile(Icons.Outlined.PhotoLibrary, "Photos", "${s.generalPhotos.size} générales", Modifier.weight(1f)) { vm.go("site/$id/photos") }
-            Tile(Icons.Outlined.Summarize, "Synthèse", "${st.reserve} rés. · ${st.nc} NC", Modifier.weight(1f)) { vm.go("site/$id/summary") }
-        }
+        // Deux groupes de tuiles, deux colonnes : ce qu'on fait sur place, puis les compléments.
+        SectionTitle("Sur place")
+        TileGrid(
+            buildList {
+                add(TileSpec(Icons.Outlined.Lock, "Accès", accessSummary(s), "site/$id/access"))
+                add(TileSpec(Icons.Outlined.Checklist, "Check-list", "${st.answered}/${st.total} points", "site/$id/checklist"))
+                if (s.kind.isPop) {
+                    add(TileSpec(Icons.Outlined.Architecture, "Aménagement", "$layoutFilled élément(s)", "site/$id/layout"))
+                }
+                add(
+                    TileSpec(
+                        Icons.Outlined.Inventory2,
+                        if (s.kind.isPop) "Baies" else "Équipements",
+                        "${s.racks.size} baie(s) · ${s.racks.sumOf { it.equipments.size }} équip.",
+                        "site/$id/racks",
+                    )
+                )
+                add(TileSpec(Icons.Outlined.Description, "Documents", "présence sur site", "site/$id/docs"))
+            },
+            vm,
+        )
+        SectionTitle("Compléments")
+        TileGrid(
+            listOf(
+                TileSpec(Icons.Outlined.Groups, "Usagers", "${s.usagers.size} présent(s)", "site/$id/usagers"),
+                TileSpec(Icons.Outlined.PhotoLibrary, "Photos", "${s.generalPhotos.size} générales", "site/$id/photos"),
+                TileSpec(Icons.Outlined.Summarize, "Synthèse", "${st.reserve} rés. · ${st.nc} NC", "site/$id/summary"),
+            ),
+            vm,
+        )
     }
 }
 
@@ -197,9 +214,17 @@ private fun accessSummary(s: Site): String =
         else -> "S.O."
     }
 
+private class TileSpec(val icon: ImageVector, val title: String, val sub: String, val route: String)
+
+/** Tuiles en deux colonnes ; une tuile seule garde la largeur d'une colonne. */
 @Composable
-private fun TileRow(content: @Composable RowScope.() -> Unit) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), content = content)
+private fun TileGrid(tiles: List<TileSpec>, vm: AppVM) {
+    tiles.chunked(2).forEach { pair ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            pair.forEach { t -> Tile(t.icon, t.title, t.sub, Modifier.weight(1f)) { vm.go(t.route) } }
+            if (pair.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+        }
+    }
 }
 
 @Composable

@@ -179,6 +179,16 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         saveNav()
     }
 
+    /** Remplace l'écran du dessus (passer à la section suivante sans empiler). */
+    fun replaceTop(route: String) {
+        if (nav.isEmpty() || nav.last() == route) return
+        nav[nav.lastIndex] = route
+        saveNav()
+    }
+
+    /** Filtre de la check-list (nom de CheckFilter), partagé entre la liste des sections et chaque section. */
+    var checkFilter by mutableStateOf("ALL")
+
     fun back() {
         if (nav.size > 1) {
             AppLog.i("nav", "← retour (depuis ${nav.last()})")

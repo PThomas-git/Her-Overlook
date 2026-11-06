@@ -12,8 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.padding
 import fr.heroverlook.data.KnownState
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -69,29 +72,97 @@ private fun FilterBar(s: Site, filter: CheckFilter, onChange: (CheckFilter) -> U
     }
 }
 
+private fun currentFilter(vm: AppVM): CheckFilter =
+    runCatching { CheckFilter.valueOf(vm.checkFilter) }.getOrDefault(CheckFilter.ALL)
+
+/** Niveau 1 : la liste des sections avec leur avancement. On entre dans une section pour voir ses points. */
 @Composable
 fun ChecklistScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
-    var filter by rememberSaveable { mutableStateOf(CheckFilter.ALL) }
+    val filter = currentFilter(vm)
     Screen("Check-list", "${s.kind.label} · ${s.name.ifBlank { s.id }}", vm::back) {
         val toValidate = s.known.count { it.state == KnownState.TODO }
         if (toValidate > 0) {
             Panel(accent = MaterialTheme.colorScheme.secondary, onClick = { vm.go("site/$id/known") }) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                    Text("$toValidate information(s) à confirmer", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Icon(Icons.Outlined.ChevronRight, null)
+                }
+            }
+        }
+        FilterBar(s, filter) { vm.checkFilter = it.name }
+        val sections = Catalog.checklist(s.kind).filter { sec -> sec.items.any { matches(s, it, filter) } }
+        if (sections.isEmpty()) {
+            Text("Aucun point ne correspond à ce filtre.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        sections.forEach { sec ->
+            val answered = sec.items.count { (s.entries[it.id]?.verdict ?: Verdict.UNSET) != Verdict.UNSET }
+            val nc = sec.items.count { s.entries[it.id]?.verdict == Verdict.NC }
+            val res = sec.items.count { s.entries[it.id]?.verdict == Verdict.RESERVE }
+            Panel(onClick = { vm.go("site/$id/checklist/${sec.id}") }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(sec.icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(26.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("$toValidate information(s) à confirmer", style = MaterialTheme.typography.titleSmall)
+                        Text(sec.title, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                         Text(
-                            "Touche pour les valider ou les corriger. Les encadrés « Connu » sous les points sont à confirmer sur place.",
-                            style = MaterialTheme.typography.bodySmall,
+                            if (filter == CheckFilter.ALL) "$answered/${sec.items.size} points"
+                            else "${sec.items.count { matches(s, it, filter) }} point(s) concerné(s)",
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null)
+                }
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { if (sec.items.isEmpty()) 0f else answered.toFloat() / sec.items.size },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (nc > 0 || res > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if (nc > 0) Text("$nc non conforme(s)", style = MaterialTheme.typography.labelMedium, color = Verdict.NC.color(), maxLines = 1)
+                        if (res > 0) Text("$res réserve(s)", style = MaterialTheme.typography.labelMedium, color = Verdict.RESERVE.color(), maxLines = 1)
                     }
                 }
             }
         }
-        FilterBar(s, filter) { filter = it }
-        Catalog.checklist(s.kind).forEach { sec -> SectionBlock(vm, id, sec, filter) }
+    }
+}
+
+/** Niveau 2 : les points d'une seule section, avec passage direct à la section suivante. */
+@Composable
+fun ChecklistSectionScreen(vm: AppVM, id: String, secId: String) {
+    val s = vm.sites[id] ?: return
+    val sections = Catalog.checklist(s.kind)
+    val idx = sections.indexOfFirst { it.id == secId }
+    if (idx < 0) {
+        LaunchedEffect(Unit) { vm.back() }
+        return
+    }
+    val sec = sections[idx]
+    val filter = currentFilter(vm)
+    val answered = sec.items.count { (s.entries[it.id]?.verdict ?: Verdict.UNSET) != Verdict.UNSET }
+    val visible = sec.items.count { matches(s, it, filter) }
+    Screen(sec.title, "$answered/${sec.items.size} points · ${s.name.ifBlank { s.id }}", vm::back) {
+        if (answered < sec.items.size) {
+            OutlinedButton(onClick = { vm.markUnansweredOk(id, sec.items.map { it.id }) }, modifier = Modifier.fillMaxWidth()) {
+                Text("Tout OK sur les points non renseignés")
+            }
+        }
+        if (visible == 0) {
+            Text("Rien à afficher avec le filtre « ${filter.label} ».", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SectionBlock(vm, id, sec, filter, showTitle = false)
+        val next = sections.getOrNull(idx + 1)
+        if (next != null) {
+            androidx.compose.material3.Button(
+                onClick = { vm.replaceTop("site/$id/checklist/${next.id}") },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Section suivante : ${next.title}") }
+        } else {
+            OutlinedButton(onClick = { vm.back() }, modifier = Modifier.fillMaxWidth()) { Text("Terminé : retour aux sections") }
+        }
     }
 }
 

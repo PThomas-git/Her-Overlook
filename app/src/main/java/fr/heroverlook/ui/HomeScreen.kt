@@ -199,7 +199,15 @@ fun HomeScreen(vm: AppVM) {
                     )
                 }
                 item {
-                    androidx.compose.foundation.layout.Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Filtres repliés par défaut : le résumé dit ce qui est actif, sans prendre la place de la liste.
+                    Collapsible(
+                        title = "Filtres",
+                        summary = buildList {
+                            if (inSel(typeSel, "POP")) add("POP")
+                            if (inSel(typeSel, "ADR")) add("ADR")
+                            VisitStatus.values().forEach { if (inSel(statusSel, it.name)) add(it.label) }
+                        }.joinToString(" · ").ifBlank { "Aucun filtre · ${all.size} sites" },
+                    ) {
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("Type", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 10.dp, end = 4.dp))
                             FilterChip(

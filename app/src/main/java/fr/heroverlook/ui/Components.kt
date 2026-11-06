@@ -53,6 +53,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -234,6 +236,57 @@ fun Panel(
             color = MaterialTheme.colorScheme.surfaceContainer,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) { inner() }
+    }
+}
+
+/** États dépliés / repliés des blocs repliables, gardés tant que l'appli tourne (fournis par AppRoot). */
+val LocalUiFlags = staticCompositionLocalOf<androidx.compose.runtime.snapshots.SnapshotStateMap<String, Boolean>?> { null }
+
+/**
+ * Bloc repliable : seul l'en-tête (titre + résumé d'une ligne) est visible tant qu'il est replié.
+ * Sert à ranger les détails secondaires pour ne montrer que l'essentiel à chaque niveau.
+ */
+@Composable
+fun Collapsible(
+    title: String,
+    summary: String? = null,
+    startOpen: Boolean = false,
+    accent: Color? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val flags = LocalUiFlags.current
+    val key = "${LocalRoute.current}|$title"
+    var local by remember { mutableStateOf(startOpen) }
+    val open = if (flags != null) (flags[key] ?: startOpen) else local
+    Panel(accent = accent, animateSize = false) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { if (flags != null) flags[key] = !open else local = !open },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                if (summary != null) {
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(
+                if (open) androidx.compose.material.icons.Icons.Outlined.ExpandLess else androidx.compose.material.icons.Icons.Outlined.ExpandMore,
+                if (open) "Replier" else "Déplier",
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = open, enter = ExpandEnter, exit = ExpandExit) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+        }
     }
 }
 

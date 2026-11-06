@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -83,8 +84,16 @@ fun TourScreen(vm: AppVM) {
     } else emptyList()
 
     Screen("Tournée", "${days.sumOf { it.size }} site(s) sur ${days.size.coerceAtLeast(1)} jour(s)", vm::back) {
-        // ---------------- Réglages ----------------
-        Panel(accent = MaterialTheme.colorScheme.primary) {
+        // ---------------- Réglages (repliés : un résumé d'une ligne suffit) ----------------
+        Collapsible(
+            title = "Réglages",
+            summary = buildString {
+                append(if (vm.tourDays == 1) "1 jour" else "${vm.tourDays} jours")
+                append(if (vm.tourFarFirst) " · plus éloignés d'abord" else " · ordre libre")
+                if (vm.tourPopOnly) append(" · POP seulement")
+            },
+            accent = MaterialTheme.colorScheme.primary,
+        ) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 (1..5).forEach { n ->
                     FilterChip(
@@ -274,48 +283,46 @@ fun TourScreen(vm: AppVM) {
             }
         }
 
-        // ---------------- Non planifiés / terminés / sans coordonnées ----------------
+        // ---------------- Listes secondaires : repliées, un compteur suffit ----------------
         if (unplanned.isNotEmpty()) {
-            SectionTitle("Non planifiés (${unplanned.size})")
-            Panel {
-                Text(
-                    unplanned.joinToString(" · ") { it.displayName() },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text("Nouveaux sites ou sites rouverts : touche « Recalculer la tournée » pour les inclure.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Collapsible("Non planifiés (${unplanned.size})", "Nouveaux sites ou sites rouverts : « Recalculer » les inclut") {
+                unplanned.forEach { s ->
+                    Row(Modifier.fillMaxWidth().clickable { card = s }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        KindBadge(s.kind)
+                        Text(s.displayName(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
         val excluded = vm.tourExcluded.mapNotNull { vm.sites[it] }
         if (excluded.isNotEmpty()) {
-            SectionTitle("Retirés à la main (${excluded.size})")
-            excluded.forEach { s ->
-                Panel(onClick = { card = s }) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Collapsible("Retirés à la main (${excluded.size})", "Touche un site pour le remettre dans un jour") {
+                excluded.forEach { s ->
+                    Row(Modifier.fillMaxWidth().clickable { card = s }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         KindBadge(s.kind)
-                        Text(s.displayName(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text(s.displayName(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Text("Ajouter", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
         }
         if (done.isNotEmpty()) {
-            SectionTitle("Terminés, retirés de la tournée (${done.size})")
-            done.forEach { s ->
-                Panel(onClick = { vm.go("site/${s.id}") }) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Collapsible("Terminés (${done.size})", "Retirés automatiquement de la tournée") {
+                done.forEach { s ->
+                    Row(Modifier.fillMaxWidth().clickable { vm.go("site/${s.id}") }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Icon(Icons.Outlined.CheckCircle, null, tint = Verdict.OK.color(), modifier = Modifier.size(20.dp))
-                        Text(s.displayName(), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text(s.displayName(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Text(s.city, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
         if (withoutGps.isNotEmpty()) {
-            SectionTitle("Sans coordonnées (${withoutGps.size})")
-            withoutGps.forEach { s ->
-                Panel(onClick = { vm.go("site/${s.id}") }) {
-                    Text(s.displayName(), style = MaterialTheme.typography.titleSmall)
-                    Text("Relever la position dans « Accès » du site.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Collapsible("Sans coordonnées (${withoutGps.size})", "Relever la position dans « Accès » du site") {
+                withoutGps.forEach { s ->
+                    Row(Modifier.fillMaxWidth().clickable { vm.go("site/${s.id}") }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(s.displayName(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
