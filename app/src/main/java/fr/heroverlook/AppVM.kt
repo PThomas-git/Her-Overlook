@@ -95,7 +95,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         if (replan) planTour() else saveTour()
     }
 
-    fun setTourBaseHere(text: String) {
+    fun changeTourBase(text: String) {
         tourBaseHere = text
         planTour()
     }

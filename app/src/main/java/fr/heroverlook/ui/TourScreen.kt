@@ -86,7 +86,7 @@ fun TourScreen(vm: AppVM) {
             locating = false
             when (res) {
                 is LocationResult.Ok -> {
-                    vm.setTourBaseHere(res.text)
+                    vm.changeTourBase(res.text)
                     selDay = 0
                     vm.toast("Départ : ta position ${res.text}" + (res.note?.let { " — $it" } ?: ""))
                 }
@@ -117,7 +117,7 @@ fun TourScreen(vm: AppVM) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 FilterChip(
                     selected = vm.tourBaseHere.isBlank(),
-                    onClick = { vm.setTourBaseHere(""); selDay = 0 },
+                    onClick = { vm.changeTourBase(""); selDay = 0 },
                     label = { Text("Agence Saint-Aunès (clés)") },
                 )
                 FilterChip(
