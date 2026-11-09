@@ -253,10 +253,7 @@ fun SiteScreen(vm: AppVM, id: String) {
         TileGrid(
             buildList {
                 add(TileSpec(Icons.Outlined.Lock, "Accès", accessSummary(s), "site/$id/access"))
-                add(TileSpec(Icons.Outlined.Checklist, "Check-list", "${st.answered}/${st.total} points", "site/$id/checklist"))
-                if (s.kind.isPop) {
-                    add(TileSpec(Icons.Outlined.Architecture, "Aménagement", "$layoutFilled élément(s)", "site/$id/layout"))
-                }
+                // Baies avant l'aménagement : le plan reprend alors les baies déjà saisies (liaison naturelle).
                 add(
                     TileSpec(
                         Icons.Outlined.Inventory2,
@@ -265,6 +262,10 @@ fun SiteScreen(vm: AppVM, id: String) {
                         "site/$id/racks",
                     )
                 )
+                if (s.kind.isPop) {
+                    add(TileSpec(Icons.Outlined.Architecture, "Aménagement", "$layoutFilled élément(s)", "site/$id/layout"))
+                }
+                add(TileSpec(Icons.Outlined.Checklist, "Check-list", "${st.answered}/${st.total} points", "site/$id/checklist"))
                 add(TileSpec(Icons.Outlined.Description, "Documents", "présence sur site", "site/$id/docs"))
             },
             vm,

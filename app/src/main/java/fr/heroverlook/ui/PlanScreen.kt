@@ -222,6 +222,26 @@ fun PlanScreen(vm: AppVM, id: String) {
         vm.toast("${added.size} baie(s) de la fiche ajoutée(s) : place-les comme dans le local.")
     }
 
+    // À l'ouverture : les symboles de baie déjà dessinés sont liés aux fiches de même numéro, et un plan sans aucune baie
+    // reprend directement celles de la fiche (les baies se saisissent avant l'aménagement).
+    LaunchedEffect(id) {
+        fun norm(t: String) = t.lowercase().filter { it.isLetterOrDigit() }
+        val linkedIds = plan.items.mapNotNull { it.rackId }.toMutableSet()
+        var changed = false
+        val items = plan.items.map { pi ->
+            if (pi.rackId == null && isRackKind(pi.kind) && pi.label.isNotBlank()) {
+                val match = s.racks.firstOrNull { r -> r.id !in linkedIds && norm(r.label) == norm(pi.label) }
+                if (match != null) {
+                    linkedIds += match.id
+                    changed = true
+                    pi.copy(rackId = match.id)
+                } else pi
+            } else pi
+        }
+        if (changed) commit(plan.copy(items = items), record = false)
+        if (plan.items.none { isRackKind(it.kind) } && s.racks.isNotEmpty()) importRacks()
+    }
+
     fun share() {
         val snapshot = plan
         val name = SiteStore.safeName(id)
