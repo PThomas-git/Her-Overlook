@@ -25,7 +25,9 @@ object Photos {
     /** Nom explicite : <site>_<contexte>_<horodatage>.jpg — utile à l'analyse sur PC. */
     fun newFile(ctx: Context, siteId: String, tag: String): File {
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
-        val t = tag.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        // « Énergie » -> « Energie » (et non « _nergie ») : on retire les accents avant de filtrer.
+        val plain = java.text.Normalizer.normalize(tag, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+        val t = plain.replace(Regex("[^A-Za-z0-9_-]"), "_")
         return File(dir(ctx, siteId), "${SiteStore.safeName(siteId)}_${t}_$stamp.jpg")
     }
 

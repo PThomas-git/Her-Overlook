@@ -42,7 +42,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
 
     // ---- Tournée (réglages et plan conservés entre deux lancements) ----
     var tourDays by mutableIntStateOf(prefs.getInt("days", 1))
-    var tourPopOnly by mutableStateOf(prefs.getBoolean("popOnly", false))
+    var tourPopOnly by mutableStateOf(prefs.getBoolean("popOnly2", true))
     var tourFarFirst by mutableStateOf(prefs.getBoolean("farFirst", true))
     var tourDetourKm by mutableIntStateOf(prefs.getInt("detourKm", 5))
 
@@ -71,7 +71,7 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
 
     private fun saveTour() {
         prefs.edit()
-            .putInt("days", tourDays).putBoolean("popOnly", tourPopOnly).putBoolean("farFirst", tourFarFirst)
+            .putInt("days", tourDays).putBoolean("popOnly2", tourPopOnly).putBoolean("farFirst", tourFarFirst)
             .putInt("detourKm", tourDetourKm).putString("start", tourStart)
             .putString("plan", TourPlanner.encodePlan(tourPlan.toList()))
             .putString("excluded", tourExcluded.joinToString("\n"))
@@ -233,10 +233,10 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
     }
 
     /** Passe en « conforme » tous les points encore non renseignés d'une section (gain de temps sur site). */
-    fun markUnansweredOk(siteId: String, itemIds: List<String>) = update(siteId) { s ->
+    fun markUnansweredOk(siteId: String, itemIds: List<String>, verdict: Verdict = Verdict.OK) = update(siteId) { s ->
         val add = itemIds
             .filter { (s.entries[it]?.verdict ?: Verdict.UNSET) == Verdict.UNSET }
-            .associateWith { id -> (s.entries[id] ?: Entry()).copy(verdict = Verdict.OK) }
+            .associateWith { id -> (s.entries[id] ?: Entry()).copy(verdict = verdict) }
         if (add.isEmpty()) s else startedIfNeeded(s.copy(entries = s.entries + add))
     }
 
@@ -383,7 +383,14 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         val entries = src.entries
             .mapValues { (_, e) -> if (e.verdict == Verdict.UNSET && e.comment.isBlank() && e.photos.isEmpty()) Entry() else e.moved() }
             .filterValues { it != Entry() }
+        // Le plan DOE pré-dessiné appartient au site d'origine (local différent) : on ne le transfère pas.
+        val doeOutline = src.layout.plan.items.any { it.note.startsWith("Plan DOE") }
+        val plan = src.layout.plan.copy(
+            outline = if (doeOutline) emptyList() else src.layout.plan.outline,
+            items = src.layout.plan.items.filterNot { it.note.startsWith("Plan DOE") },
+        )
         val layout = src.layout.copy(
+            plan = plan,
             photos = src.layout.photos.map(remap),
             sketches = src.layout.sketches.map(remap),
             deviations = src.layout.deviations.map { d -> d.copy(photos = d.photos.map(remap)) },

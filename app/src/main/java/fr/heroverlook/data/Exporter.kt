@@ -5,6 +5,7 @@ import kotlinx.serialization.builtins.ListSerializer
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.OutputStream
+import java.util.Locale
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -156,7 +157,7 @@ object Exporter {
         val header = listOf(
             "site_id", "site_nom", "baie", "type_baie", "proprietaire", "usager_baie", "description_baie", "u_total", "u_libres",
             "jarretiérage", "commentaire_baie", "photos_baie",
-            "equip_type", "marque", "modele", "numero_serie", "date_mise_en_service", "licence", "usager_equip", "commentaire_equip", "photos_equip"
+            "equip_type", "marque", "modele", "numero_serie", "nom_hote", "date_mise_en_service", "licence", "usager_equip", "commentaire_equip", "photos_equip"
         )
         val rows = ArrayList<List<String>>()
         for (s in sites) {
@@ -166,11 +167,11 @@ object Exporter {
                     r.jumpers.name, r.comment, names(r.photos)
                 )
                 if (r.equipments.isEmpty()) {
-                    rows += rackPart + List(9) { "" }
+                    rows += rackPart + List(10) { "" }
                 } else {
                     for (e in r.equipments) {
                         rows += rackPart + listOf(
-                            e.type, e.brand, e.model, e.serial, e.commissioningDate, e.license, e.usager, e.comment, names(e.photos)
+                            e.type, e.brand, e.model, e.serial, e.hostname, e.commissioningDate, e.license, e.usager, e.comment, names(e.photos)
                         )
                     }
                 }
@@ -182,13 +183,23 @@ object Exporter {
     private fun layoutCsv(sites: List<Site>): String {
         val header = listOf(
             "site_id", "site_nom", "plan_reference", "longueur_m", "largeur_m", "hauteur_m", "portes", "positions_baies",
-            "commentaire", "ecart", "photos_ecart"
+            "commentaire", "plan_longueur_m", "plan_largeur_m", "plan_precision", "nb_elements_plan", "ecart", "photos_ecart"
         )
         val rows = ArrayList<List<String>>()
         for (s in sites) {
             if (!s.kind.isPop) continue
             val l = s.layout
-            val base = listOf(s.id, s.name, l.referencePlan, l.lengthM, l.widthM, l.heightM, l.doors, l.rackPositions, l.comment)
+            // Dimensions dérivées du plan dessiné (contour, sinon enveloppe des éléments) : estimées à vue d'œil.
+            val pl = l.plan
+            val xs = if (pl.outline.isNotEmpty()) pl.outline.map { it.x } else pl.items.flatMap { listOf(it.x, it.x + it.w) }
+            val ys = if (pl.outline.isNotEmpty()) pl.outline.map { it.y } else pl.items.flatMap { listOf(it.y, it.y + it.h) }
+            val dims = if (xs.isEmpty()) listOf("", "", "") else listOf(
+                "%.1f".format(Locale.US, (xs.max() - xs.min()) / 100.0),
+                "%.1f".format(Locale.US, (ys.max() - ys.min()) / 100.0),
+                if (pl.outline.isNotEmpty()) "estimee_a_vue" else "enveloppe_elements_estimee",
+            )
+            val base = listOf(s.id, s.name, l.referencePlan, l.lengthM, l.widthM, l.heightM, l.doors, l.rackPositions, l.comment) +
+                dims + listOf(pl.items.size.toString())
             if (l.deviations.isEmpty()) rows += base + listOf("", "")
             else l.deviations.forEach { rows += base + listOf(it.text, names(it.photos)) }
         }

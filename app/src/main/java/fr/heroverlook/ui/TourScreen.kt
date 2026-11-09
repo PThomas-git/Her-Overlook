@@ -312,7 +312,11 @@ fun TourScreen(vm: AppVM) {
 
         // ---------------- ADR sur la route (mode POP seulement) ----------------
         if (vm.tourPopOnly && route.isNotEmpty()) {
-            SectionTitle("ADR sur la route (détour ≤ ${vm.tourDetourKm} km)")
+            Collapsible(
+                title = "ADR sur la route (${suggestions.size})",
+                summary = "Facultatif : les POP sont prioritaires · détour ≤ ${vm.tourDetourKm} km",
+                startOpen = false,
+            ) {
             if (suggestions.isEmpty()) {
                 Text(
                     "Aucun ADR à moins de ${vm.tourDetourKm} km de détour de ce trajet. Augmente le détour maximum pour en voir plus.",
@@ -344,6 +348,7 @@ fun TourScreen(vm: AppVM) {
                         }
                     }
                 }
+            }
             }
         }
 

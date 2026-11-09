@@ -76,7 +76,7 @@ object Catalog {
                 Item("p_tgbt_etat", "TGBT : état général et étiquetage"),
                 Item("p_ae", "Atelier d'énergie", "Redresseurs, qualité de l'énergie", valueLabel = "Marque / modèle"),
                 Item("p_batteries", "Batteries", "Fuite, défaut, date limite dépassée", valueLabel = "Date de mise en service"),
-                Item("p_ge", "Groupe électrogène", "Prise de relais ; sans objet si absent"),
+                Item("p_ge", "Raccordement groupe électrogène mobile", "Prise ou trappe dans le mur pour brancher un groupe mobile (pas de groupe fixe) ; sans objet si absente"),
                 Item("p_compteur", "Compteur électrique", "Relever PRM / PDL et puissance souscrite", valueLabel = "N° PRM / PDL", ref = "3.13"),
             )
         ),
@@ -86,7 +86,7 @@ object Catalog {
                 Item("p_clim", "Climatisation", "Produit du froid, capacité de dissipation suffisante", valueLabel = "Température relevée (°C)"),
                 Item("p_clim_secours", "Climatisation de secours"),
                 Item("p_ventil", "Ventilation et filtres"),
-                Item("p_alarmes", "Alarmes (porte, clim, gazole, énergie)", "Collectées au boîtier GTC ; test si possible"),
+                Item("p_alarmes", "Alarmes (porte, clim, gazole, énergie)", "Présence du report d'alarmes au boîtier GTC (constat visuel, sans essai)"),
                 Item("p_gtc", "GTC / télétransmetteur"),
                 Item("p_eau_fumee", "Détection eau / fumée"),
             )
@@ -193,6 +193,27 @@ object EquipmentTypes {
         "Routeur", "Switch", "OLT", "Transpondeur", "Convertisseur", "Atelier d'énergie", "Onduleur",
         "Batterie", "Climatisation", "GTC", "Télétransmetteur", "ODF", "Autre"
     )
+
+    /** Propose un type d'après la marque / le modèle saisis (vide si rien de sûr). */
+    fun guess(brand: String, model: String): String {
+        val m = "$brand $model".lowercase()
+        fun has(vararg k: String) = k.any { m.contains(it) }
+        return when {
+            has("7606", "smartedge", "asr9", "asr1", "ncs", "router", "routeur") -> "Routeur"
+            has("catalyst", "4507", "6500", "s5600", "s7706", "s5700", "s6700", "quidway", "nexus", "switch") -> "Switch"
+            has("olt", "ma5600", "ma5800", "c300") -> "OLT"
+            has("cn-", "ptn", "xt-", "tm-", "xtc", "optical transport", "transpond", "muxponder") -> "Transpondeur"
+            has("redresseur", "emerson", "eltek", "delta", "g ancienne") -> "Atelier d'énergie"
+            has("onduleur", "ups", "apc", "eaton", "socomec") -> "Onduleur"
+            has("12v", "batter", "fiamm", "yuasa", "enersys") -> "Batterie"
+            has("airedale", "hitachi", "mitsubishi", "daikin", "split", "clim") -> "Climatisation"
+            has("corning", "odf", "tiroir", "repartiteur") -> "ODF"
+            has("gtc", "gtb") -> "GTC"
+            has("teletransm", "télétransm") -> "Télétransmetteur"
+            has("media converter", "convertisseur") -> "Convertisseur"
+            else -> ""
+        }
+    }
 }
 
 object AccessMethods {

@@ -177,8 +177,22 @@ fun DocumentsScreen(vm: AppVM, id: String) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val docs = Catalog.documents(s.kind)
+        val left = docs.items.count { (s.entries[it.id]?.verdict ?: Verdict.UNSET) == Verdict.UNSET }
+        if (left > 0) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { vm.markUnansweredOk(id, docs.items.map { it.id }, Verdict.NC) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Restants ($left) : absents") }
+                OutlinedButton(
+                    onClick = { vm.markUnansweredOk(id, docs.items.map { it.id }, Verdict.OK) },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Restants ($left) : présents") }
+            }
+        }
         FilterBar(s, filter) { filter = it }
-        SectionBlock(vm, id, Catalog.documents(s.kind), filter, showTitle = false)
+        SectionBlock(vm, id, docs, filter, showTitle = false)
     }
 }
 
@@ -279,6 +293,14 @@ private fun ItemCard(vm: AppVM, siteId: String, item: Item) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.End,
         ) {
+            if (e.verdict == Verdict.UNSET && (e.comment.isNotBlank() || e.photos.isNotEmpty() || (e.value.isNotBlank() && item.valueLabel == null))) {
+                Text(
+                    "Verdict à choisir",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             TextButton(onClick = { open = !open }) {
                 Text(if (open) "Masquer" else if (hasDetail) "Détails (renseignés)" else "Commentaire / photo")
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)

@@ -5,6 +5,7 @@ package fr.heroverlook.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -161,11 +162,24 @@ fun RackScreen(vm: AppVM, siteId: String, rackId: String) {
             Field("Commentaire", r.comment, { t -> upd { it.copy(comment = t) } }, singleLine = false, minLines = 2)
         }
 
-        SectionTitle("Équipements (${r.equipments.size})")
-        r.equipments.forEach { e -> EquipmentCard(siteId, tag, e, ::upd) }
-        OutlinedButton(onClick = { upd { it.copy(equipments = it.equipments + Equipment()) } }, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Outlined.Add, null)
-            Text("  Ajouter un équipement")
+        val equipBlock: @Composable ColumnScope.() -> Unit = {
+            r.equipments.forEach { e -> EquipmentCard(siteId, tag, e, ::upd) }
+            OutlinedButton(onClick = { upd { it.copy(equipments = it.equipments + Equipment()) } }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.Add, null)
+                Text("  Ajouter un équipement")
+            }
+        }
+        if (r.owner == "Tiers") {
+            // Baie tiers : le détail des équipements n'est pas requis, on le garde replié.
+            Collapsible(
+                title = "Équipements (${r.equipments.size}) — facultatif, baie tiers",
+                summary = "Le détail n'est pas nécessaire pour une baie tiers",
+                startOpen = false,
+                content = equipBlock,
+            )
+        } else {
+            SectionTitle("Équipements (${r.equipments.size})")
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), content = equipBlock)
         }
     }
 
@@ -215,7 +229,8 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
                     style = MaterialTheme.typography.titleSmall,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
-                if (e.serial.isNotBlank()) Text("S/N ${e.serial}", style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val ids = listOf(e.hostname, if (e.serial.isNotBlank()) "S/N ${e.serial}" else "").filter { it.isNotBlank() }.joinToString("  ·  ")
+                if (ids.isNotBlank()) Text(ids, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             IconButton(onClick = { open = !open }) {
                 Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, "Déplier")
@@ -226,9 +241,10 @@ private fun EquipmentCard(siteId: String, rackTag: String, e: Equipment, updRack
                 ChoiceChips(EquipmentTypes.all, e.type) { t -> upd { it.copy(type = t) } }
                 Field("Type (libre)", e.type, { t -> upd { it.copy(type = t) } })
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Field("Marque", e.brand, { t -> upd { it.copy(brand = t) } }, Modifier.weight(1f))
-                    Field("Modèle", e.model, { t -> upd { it.copy(model = t) } }, Modifier.weight(1f))
+                    Field("Marque", e.brand, { t -> upd { it.copy(brand = t, type = it.type.ifBlank { EquipmentTypes.guess(t, it.model) }) } }, Modifier.weight(1f))
+                    Field("Modèle", e.model, { t -> upd { it.copy(model = t, type = it.type.ifBlank { EquipmentTypes.guess(it.brand, t) }) } }, Modifier.weight(1f))
                 }
+                Field("Nom d'hôte / repère (ex. 34AGDE-S7706-1)", e.hostname, { t -> upd { it.copy(hostname = t.trim()) } }, mono = true)
                 Field("N° de série", e.serial, { t -> upd { it.copy(serial = t.trim()) } }, mono = true)
                 OutlinedButton(onClick = scan, enabled = !scanning, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.QrCodeScanner, null)

@@ -74,6 +74,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -613,17 +614,25 @@ fun PhotoStrip(
     viewing?.let { p ->
         Dialog(onDismissRequest = { viewing = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = Color.Black) {
-                Column(Modifier.fillMaxSize()) {
+                var armed by remember(p) { mutableStateOf(false) }
+                Column(Modifier.fillMaxSize().systemBarsPadding()) {
                     Thumb(p, Modifier.weight(1f).fillMaxWidth(), maxSide = 1800, contentScale = ContentScale.Fit)
-                    Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
                         TextButton(onClick = { viewing = null }) { Text("Fermer") }
                         OutlinedButton(onClick = {
-                            Photos.abs(ctx, p).delete()
-                            onRemove(p)
-                            viewing = null
+                            if (!armed) {
+                                armed = true
+                            } else {
+                                Photos.abs(ctx, p).delete()
+                                onRemove(p)
+                                viewing = null
+                            }
                         }) {
                             Icon(Icons.Outlined.Delete, null)
-                            Text("  Supprimer")
+                            Text(if (armed) "  Confirmer la suppression" else "  Supprimer")
                         }
                     }
                 }

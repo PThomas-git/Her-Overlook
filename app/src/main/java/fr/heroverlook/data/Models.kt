@@ -40,6 +40,8 @@ data class Equipment(
     val brand: String = "",
     val model: String = "",
     val serial: String = "",
+    /** Nom d'hôte / repère d'exploitation (ex. 34AGDE-S7706-1), distinct de l'usager. */
+    val hostname: String = "",
     val commissioningDate: String = "",
     val license: String = "",
     val usager: String = "",

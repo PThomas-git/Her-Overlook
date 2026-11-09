@@ -26,6 +26,11 @@ import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Navigation
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import fr.heroverlook.data.latLon
 import fr.heroverlook.data.LatLon
 import fr.heroverlook.data.LocationResult
 import fr.heroverlook.data.TourPlanner
@@ -51,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +88,18 @@ private fun toggleSel(cur: String, key: String): String {
 }
 
 private fun inSel(cur: String, key: String) = cur.split(",").contains(key)
+
+/** Lance la navigation vers le site (coordonnées, sinon adresse). */
+private fun openDirections(ctx: Context, s: Site, onFail: () -> Unit) {
+    val ll = s.latLon()
+    val uri = if (ll != null) Uri.parse("google.navigation:q=${ll.lat},${ll.lon}")
+    else Uri.parse("geo:0,0?q=" + Uri.encode("${s.address} ${s.postalCode} ${s.city}"))
+    try {
+        ctx.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    } catch (e: Exception) {
+        onFail()
+    }
+}
 
 @Composable
 fun statusColor(s: VisitStatus): Color = when (s) {
@@ -160,7 +178,26 @@ fun HomeScreen(vm: AppVM) {
         }
     }
 
-    val all = vm.sites.values.sortedWith(compareBy({ it.kind.ordinal }, { it.id }))
+    // La tournée existe dès qu'il y a des sites : l'accueil la reflète (ordre, prochain arrêt, direction).
+    LaunchedEffect(vm.sites.size) { if (vm.sites.isNotEmpty() && vm.tourPlan.isEmpty()) vm.planTour() }
+    val stopOf = HashMap<String, Triple<Int, Int, Int>>() // id -> (jour, rang dans le jour, nb d'arrêts du jour)
+    vm.tourPlan.forEachIndexed { d, ids -> ids.forEachIndexed { i, id -> stopOf[id] = Triple(d, i, ids.size) } }
+    // Ordre : tournée (jour puis ordre de passage) · hors tournée (POP puis ADR) · terminés en bas.
+    fun group(s: Site): Int = when {
+        s.status == VisitStatus.DONE -> 2
+        stopOf.containsKey(s.id) -> 0
+        else -> 1
+    }
+    val all = vm.sites.values.sortedWith(
+        compareBy<Site>({ group(it) }, { stopOf[it.id]?.first ?: 0 }, { stopOf[it.id]?.second ?: 0 }, { it.kind.ordinal }, { it.id })
+    )
+    fun header(s: Site): String = when (group(s)) {
+        0 -> "Jour ${(stopOf[s.id]?.first ?: 0) + 1}"
+        1 -> "Hors tournée"
+        else -> "Terminés"
+    }
+    // Prochain arrêt : premier site non terminé du premier jour qui en a encore.
+    val nextStop: Site? = vm.tourPlan.firstNotNullOfOrNull { ids -> ids.firstNotNullOfOrNull { id -> vm.sites[id]?.takeIf { it.status != VisitStatus.DONE } } }
     val shown = all.filter { s ->
         val typeOk = typeSel.isBlank() ||
             (s.kind == SiteKind.POP && inSel(typeSel, "POP")) ||
@@ -241,6 +278,44 @@ fun HomeScreen(vm: AppVM) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item { Overview(all) }
+                if (nextStop != null) {
+                    item {
+                        val st = stopOf[nextStop.id]
+                        val remaining = st?.let { (d, _, _) -> vm.tourPlan[d].count { id -> vm.sites[id]?.status?.let { it != VisitStatus.DONE } == true } } ?: 0
+                        Panel(accent = MaterialTheme.colorScheme.secondary, onClick = { vm.go("site/${nextStop.id}") }) {
+                            Text(
+                                if (st != null) "Prochain arrêt · Jour ${st.first + 1} · $remaining restant(s)" else "Prochain arrêt",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.secondary,
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                KindBadge(nextStop.kind)
+                                Column(Modifier.weight(1f)) {
+                                    Text(nextStop.name.ifBlank { nextStop.id }, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        listOf(nextStop.city, nextStop.address).filter { it.isNotBlank() }.joinToString(" · "),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { openDirections(ctx, nextStop) { vm.toast("Aucune application de navigation") } },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Icon(Icons.Outlined.Navigation, null)
+                                    Text("  Directions")
+                                }
+                                OutlinedButton(onClick = { vm.go("tour") }, modifier = Modifier.weight(1f)) {
+                                    Icon(Icons.Outlined.Map, null)
+                                    Text("  Tournée")
+                                }
+                            }
+                        }
+                    }
+                }
                 item {
                     OutlinedTextField(
                         value = query, onValueChange = { query = it },
@@ -291,7 +366,24 @@ fun HomeScreen(vm: AppVM) {
                 if (all.isEmpty()) {
                     item { EmptyState(vm, onImport = { importLauncher.launch(arrayOf("*/*")) }) }
                 }
-                items(shown, key = { it.id }) { s -> SiteCard(s, Modifier.animateItem()) { vm.go("site/${s.id}") } }
+                shown.groupBy { header(it) }.forEach { (title, list) ->
+                    item(key = "h_$title") {
+                        Text(
+                            "$title · ${list.size}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                    items(list, key = { it.id }) { s ->
+                        val st = stopOf[s.id]?.takeIf { s.status != VisitStatus.DONE }
+                        SiteCard(
+                            s, Modifier.animateItem(),
+                            stop = st?.let { (_, i, n) -> "${i + 1}/$n" },
+                            onDirections = { openDirections(ctx, s) { vm.toast("Aucune application de navigation") } },
+                        ) { vm.go("site/${s.id}") }
+                    }
+                }
             }
             vm.busy?.let { msg ->
                 Box(Modifier.fillMaxSize().background(Color(0x99000000)), contentAlignment = Alignment.Center) {
@@ -355,13 +447,19 @@ private fun EmptyState(vm: AppVM, onImport: () -> Unit) {
 }
 
 @Composable
-private fun SiteCard(s: Site, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun SiteCard(s: Site, modifier: Modifier = Modifier, stop: String? = null, onDirections: (() -> Unit)? = null, onClick: () -> Unit) {
     val st = s.stats()
     val progress by animateFloatAsState(st.progress, tween(700), label = "siteProgress")
     Panel(modifier = modifier, accent = statusColor(s.status), onClick = onClick) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             KindBadge(s.kind)
+            if (stop != null) Text("arrêt $stop", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary, maxLines = 1)
             Text(s.id, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (onDirections != null && s.status != VisitStatus.DONE) {
+                IconButton(onClick = onDirections, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.Navigation, "Directions", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
             Icon(
                 when (s.status) {
                     VisitStatus.TODO -> Icons.Outlined.RadioButtonUnchecked
