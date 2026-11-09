@@ -21,6 +21,14 @@ fun Site.displayName(): String = name.ifBlank { id }
  * Toutes les distances sont « à vol d'oiseau » (compter environ ×1,3 par la route).
  */
 object TourPlanner {
+    /** « 120 m » sous 1 km, sinon « 3,4 km ». */
+    fun fmtDist(km: Double): String =
+        if (km < 1.0) "${(km * 1000).toInt()} m" else String.format(java.util.Locale.FRANCE, "%.1f km", km)
+
+    /** Les [n] sites les plus proches de [p] avec leur distance en km. */
+    fun nearest(sites: List<Site>, p: LatLon, n: Int): List<Pair<Site, Double>> =
+        sites.mapNotNull { s -> s.latLon()?.let { s to km(p, it) } }.sortedBy { it.second }.take(n)
+
     fun fmt(p: LatLon): String = String.format(java.util.Locale.US, "%.6f, %.6f", p.lat, p.lon)
 
     fun km(a: LatLon, b: LatLon): Double {

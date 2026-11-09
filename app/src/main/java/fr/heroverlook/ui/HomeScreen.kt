@@ -25,6 +25,11 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.MyLocation
+import fr.heroverlook.data.LatLon
+import fr.heroverlook.data.LocationResult
+import fr.heroverlook.data.TourPlanner
+import fr.heroverlook.data.requestLocation
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
@@ -96,6 +101,50 @@ fun HomeScreen(vm: AppVM) {
     var menu by remember { mutableStateOf(false) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
 
+    // « Autour de moi » : les sites les plus proches de la position actuelle (évite de saisir sur le mauvais site)
+    var nearby by remember { mutableStateOf<List<Pair<Site, Double>>?>(null) }
+    var locating by remember { mutableStateOf(false) }
+    val locError = remember { mutableStateOf<String?>(null) }
+    fun findNearby() {
+        locating = true
+        requestLocation(ctx) { res ->
+            locating = false
+            when (res) {
+                is LocationResult.Ok ->
+                    nearby = TourPlanner.nearest(vm.sites.values.toList(), LatLon(res.lat, res.lon), 6)
+                is LocationResult.Fail -> locError.value = res.reason
+            }
+        }
+    }
+    val locPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { r ->
+        if (r.values.any { it }) findNearby()
+        else locError.value = "Permission de localisation refusée : autorise « Position » pour Hér'Overlook dans les réglages de l'appli."
+    }
+    LocationErrorDialog(locError.value) { locError.value = null }
+    nearby?.let { list ->
+        androidx.compose.material3.ModalBottomSheet(
+            onDismissRequest = { nearby = null },
+            sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Sites proches de toi", style = MaterialTheme.typography.titleLarge)
+                if (list.isEmpty()) Text("Aucun site avec coordonnées.", style = MaterialTheme.typography.bodyMedium)
+                list.forEach { (s, d) ->
+                    Panel(onClick = { nearby = null; vm.go("site/${s.id}") }) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            KindBadge(s.kind)
+                            Column(Modifier.weight(1f)) {
+                                Text(s.name.ifBlank { s.id }, style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                                Text(s.city, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            Text(TourPlanner.fmtDist(d), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) vm.export(uri)
     }
@@ -149,6 +198,10 @@ fun HomeScreen(vm: AppVM) {
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { locPermLauncher.launch(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)) },
+                        enabled = !locating,
+                    ) { Icon(Icons.Outlined.MyLocation, "Sites autour de moi") }
                     IconButton(onClick = { vm.go("tour") }) { Icon(Icons.Outlined.Map, "Tournée") }
                     IconButton(onClick = {
                         val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())

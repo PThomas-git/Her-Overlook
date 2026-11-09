@@ -53,6 +53,8 @@ data class Rack(
     /** Numéro / position de la baie sur le plan d'aménagement (ex. "1", "8", "TGBT"). */
     val label: String = "",
     val kind: String = "Active",
+    /** Propriétaire de la baie : « HTel » (Hérault Télécom) ou « Tiers » ; vide = non renseigné. */
+    val owner: String = "",
     val usager: String = "",
     val description: String = "",
     val totalU: String = "",

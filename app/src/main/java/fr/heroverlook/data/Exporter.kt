@@ -154,7 +154,7 @@ object Exporter {
 
     private fun racksCsv(sites: List<Site>): String {
         val header = listOf(
-            "site_id", "site_nom", "baie", "type_baie", "usager_baie", "description_baie", "u_total", "u_libres",
+            "site_id", "site_nom", "baie", "type_baie", "proprietaire", "usager_baie", "description_baie", "u_total", "u_libres",
             "jarretiérage", "commentaire_baie", "photos_baie",
             "equip_type", "marque", "modele", "numero_serie", "date_mise_en_service", "licence", "usager_equip", "commentaire_equip", "photos_equip"
         )
@@ -162,7 +162,7 @@ object Exporter {
         for (s in sites) {
             for (r in s.racks) {
                 val rackPart = listOf(
-                    s.id, s.name, r.label, r.kind, r.usager, r.description, r.totalU, r.freeU,
+                    s.id, s.name, r.label, r.kind, r.owner, r.usager, r.description, r.totalU, r.freeU,
                     r.jumpers.name, r.comment, names(r.photos)
                 )
                 if (r.equipments.isEmpty()) {

@@ -53,6 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material3.AssistChip
@@ -498,6 +499,40 @@ fun rememberPhotoTaker(siteId: String, tag: String, onTaken: (String) -> Unit): 
     }
 }
 
+/**
+ * Ajout de photos depuis la galerie (sélecteur de photos Android : aucune permission). Chaque image est copiée dans le
+ * dossier du site, réduite comme une photo prise sur place, puis rattachée via [onPicked].
+ */
+@Composable
+fun rememberGalleryPicker(siteId: String, tag: String, onPicked: (String) -> Unit): () -> Unit {
+    val ctx = LocalContext.current
+    val currentOnPicked by rememberUpdatedState(onPicked)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
+        if (uris.isNotEmpty()) {
+            AppLog.i("photo", "Import galerie : ${uris.size} image(s) ($siteId / $tag)")
+            thread {
+                for (uri in uris) {
+                    try {
+                        val f = Photos.newFile(ctx, siteId, "${tag}_galerie")
+                        ctx.contentResolver.openInputStream(uri)?.use { input -> f.outputStream().use { out -> input.copyTo(out) } }
+                        if (f.exists() && f.length() > 0) {
+                            Photos.compress(f)
+                            val rel = Photos.rel(ctx, f)
+                            Handler(Looper.getMainLooper()).post { currentOnPicked(rel) }
+                        } else {
+                            f.delete()
+                        }
+                        Thread.sleep(3) // horodatage unique pour chaque fichier
+                    } catch (e: Exception) {
+                        AppLog.e("photo", "Import depuis la galerie impossible", e)
+                    }
+                }
+            }
+        }
+    }
+    return { launcher.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+}
+
 @Composable
 fun Thumb(rel: String, modifier: Modifier = Modifier, maxSide: Int = 300, contentScale: ContentScale = ContentScale.Crop) {
     val ctx = LocalContext.current
@@ -525,6 +560,7 @@ fun PhotoStrip(
 ) {
     val ctx = LocalContext.current
     val take = rememberPhotoTaker(siteId, tag, onAdd)
+    val pick = rememberGalleryPicker(siteId, tag, onAdd)
     var viewing by remember { mutableStateOf<String?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (label != null) {
@@ -550,6 +586,23 @@ fun PhotoStrip(
                         Icon(Icons.Outlined.AddAPhoto, "Prendre une photo")
                         Text("Photo", style = MaterialTheme.typography.labelSmall)
                     }
+                }
+            }
+            Surface(
+                onClick = pick,
+                modifier = Modifier.size(84.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Column(
+                    Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(androidx.compose.material.icons.Icons.Outlined.PhotoLibrary, "Ajouter depuis la galerie")
+                    Text("Galerie", style = MaterialTheme.typography.labelSmall)
                 }
             }
             photos.forEach { p ->

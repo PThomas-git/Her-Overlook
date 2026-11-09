@@ -19,6 +19,7 @@ import fr.heroverlook.data.AppLog
 import fr.heroverlook.data.Entry
 import fr.heroverlook.data.Exporter
 import fr.heroverlook.data.Known
+import fr.heroverlook.data.KnownState
 import fr.heroverlook.data.LatLon
 import fr.heroverlook.data.Photos
 import fr.heroverlook.data.TourPlanner
@@ -371,6 +372,96 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
 
     fun deleteDemo() = deleteSite(SiteStore.demoSite().id)
 
+    /**
+     * Copie le relevé de [src] dans [target] (l'identité du site cible — adresse, code, données connues — est conservée).
+     * Les photos sont renvoyées par [remap]. Les validations « déjà connu » sont remises à zéro (elles portaient sur les
+     * informations de l'autre site) ; les corrections saisies sont conservées dans l'analyse. Les valeurs pré-remplies
+     * jamais touchées sont retirées pour ne pas laisser les données de l'autre site.
+     */
+    private fun transferReleve(target: Site, src: Site, remap: (String) -> String): Site {
+        fun Entry.moved() = copy(photos = photos.map(remap))
+        val entries = src.entries
+            .mapValues { (_, e) -> if (e.verdict == Verdict.UNSET && e.comment.isBlank() && e.photos.isEmpty()) Entry() else e.moved() }
+            .filterValues { it != Entry() }
+        val layout = src.layout.copy(
+            photos = src.layout.photos.map(remap),
+            sketches = src.layout.sketches.map(remap),
+            deviations = src.layout.deviations.map { d -> d.copy(photos = d.photos.map(remap)) },
+        )
+        val racks = src.racks.map { r ->
+            r.copy(photos = r.photos.map(remap), equipments = r.equipments.map { e -> e.copy(photos = e.photos.map(remap)) })
+        }
+        val rounds = src.rounds.map { rd -> rd.copy(entries = rd.entries.mapValues { (_, e) -> e.moved() }) }
+        val fixes = src.known.filter { it.fix.isNotBlank() }.map { "• ${it.label} : ${it.fix}" }
+        val analysis = listOf(
+            src.analysis,
+            if (fixes.isEmpty()) "" else "Corrections saisies sur les infos « déjà connues » de ${src.name.ifBlank { src.id }} :\n" + fixes.joinToString("\n"),
+        ).filter { it.isNotBlank() }.joinToString("\n\n")
+        return target.copy(
+            status = src.status, visitDate = src.visitDate, measuredGps = src.measuredGps,
+            accessMethods = src.accessMethods, accessResult = src.accessResult, accessNote = src.accessNote,
+            onSiteContact = src.onSiteContact, accessPhotos = src.accessPhotos.map(remap),
+            entries = entries, layout = layout, racks = racks, usagers = src.usagers,
+            generalPhotos = src.generalPhotos.map(remap), analysis = analysis, revisit = src.revisit,
+            rounds = rounds, revisitIds = src.revisitIds,
+            known = target.known.map { it.copy(state = KnownState.TODO, fix = "") },
+        )
+    }
+
+    /**
+     * Échange les relevés de deux sites (erreur de saisie : on a rempli le mauvais site). Les photos changent de dossier
+     * et de nom ; l'identité des sites ne bouge pas. Réimporter ensuite l'inventaire recharge les données prévues.
+     */
+    fun swapReleve(aId: String, bId: String) {
+        val a = sites[aId] ?: return
+        val b = sites[bId] ?: return
+        if (aId == bId) return
+        val ctx = getApplication<Application>()
+        busy = "Échange du relevé en cours…"
+        Thread {
+            try {
+                val sa = SiteStore.safeName(aId)
+                val sb = SiteStore.safeName(bId)
+                fun movePhotos(from: Site, fromSafe: String, toSafe: String): Map<String, String> {
+                    val map = HashMap<String, String>()
+                    for (rel in from.allPhotos()) {
+                        val name = rel.substringAfterLast('/')
+                        val newName = if (name.startsWith(fromSafe + "_")) toSafe + name.removePrefix(fromSafe) else name
+                        var dest = File(ctx.filesDir, "photos/$toSafe/$newName")
+                        dest.parentFile?.mkdirs()
+                        if (dest.exists()) dest = File(dest.parentFile, "x_" + newName)
+                        val src = File(ctx.filesDir, rel)
+                        if (src.exists()) {
+                            if (!src.renameTo(dest)) {
+                                src.copyTo(dest, overwrite = true)
+                                src.delete()
+                            }
+                        }
+                        map[rel] = Photos.rel(ctx, dest)
+                    }
+                    return map
+                }
+                val mapAtoB = movePhotos(a, sa, sb) // photos du relevé de A, qui passent chez B
+                val mapBtoA = movePhotos(b, sb, sa)
+                val newA = transferReleve(a, b) { mapBtoA[it] ?: it } // A reçoit le relevé de B
+                val newB = transferReleve(b, a) { mapAtoB[it] ?: it }
+                Handler(Looper.getMainLooper()).post {
+                    update(aId) { newA }
+                    update(bId) { newB }
+                    busy = null
+                    AppLog.w("data", "Relevés échangés : $aId <-> $bId")
+                    toast("Relevés échangés. Vérifie les valeurs pré-remplies (PRM, équipements attendus) : elles viennent de l'autre site si tu ne les avais pas corrigées.")
+                }
+            } catch (e: Exception) {
+                AppLog.e("data", "Échange de relevés impossible", e)
+                Handler(Looper.getMainLooper()).post {
+                    busy = null
+                    toast("Échange impossible : ${e.message}")
+                }
+            }
+        }.start()
+    }
+
     /** Supprime un site, son relevé et ses photos de ce téléphone (irréversible : penser à exporter avant). */
     fun deleteSite(id: String, withPhotos: Boolean = true) {
         sites.remove(id)
@@ -392,9 +483,10 @@ class AppVM(app: Application, private val state: SavedStateHandle) : AndroidView
         toast("${ids.size} site(s) supprimé(s). Tu peux réimporter l'inventaire (menu ⋮).")
     }
 
-    fun export(uri: Uri) {
+    /** Export ZIP de tous les sites, ou d'un seul si [onlyId] est donné. */
+    fun export(uri: Uri, onlyId: String? = null) {
         val ctx = getApplication<Application>()
-        val snapshot = sites.values.toList()
+        val snapshot = sites.values.filter { onlyId == null || it.id == onlyId }
         busy = "Export en cours…"
         Thread {
             try {

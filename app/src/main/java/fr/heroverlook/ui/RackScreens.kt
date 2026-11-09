@@ -46,6 +46,9 @@ import fr.heroverlook.data.EquipmentTypes
 import fr.heroverlook.data.ItemKind
 import fr.heroverlook.data.Rack
 import fr.heroverlook.data.RackKinds
+import fr.heroverlook.data.RackOwners
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.padding
 import fr.heroverlook.data.Verdict
 
 // ---------------------------------------------------------------- LISTE DES BAIES
@@ -70,6 +73,14 @@ fun RacksScreen(vm: AppVM, id: String) {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(r.kind, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                    if (r.owner.isNotBlank()) {
+                        Text(
+                            r.owner,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (r.owner == "Tiers") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.border(1.dp, if (r.owner == "Tiers") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
                     if (r.photos.isNotEmpty()) {
                         Icon(Icons.Outlined.PhotoCamera, null, modifier = Modifier.size(18.dp))
                         Text("${r.photos.size}", style = MaterialTheme.typography.labelMedium)
@@ -128,6 +139,8 @@ fun RackScreen(vm: AppVM, siteId: String, rackId: String) {
                 Field("U libres", r.freeU, { t -> upd { it.copy(freeU = t) } }, Modifier.weight(1f), keyboard = KeyboardType.Number)
             }
             ChoiceChips(RackKinds.all, r.kind) { k -> upd { it.copy(kind = k.ifBlank { r.kind }) } }
+            Text("Propriétaire de la baie", style = MaterialTheme.typography.labelLarge)
+            ChoiceChips(RackOwners.all, r.owner) { o -> upd { it.copy(owner = o) } }
             Field("Usager / référence (opérateur, client)", r.usager, { t -> upd { it.copy(usager = t) } })
             Field("Description (contenu, étiquettes, particularités)", r.description, { t -> upd { it.copy(description = t) } }, singleLine = false, minLines = 3)
         }

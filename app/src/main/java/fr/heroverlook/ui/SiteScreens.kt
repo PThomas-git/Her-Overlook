@@ -20,6 +20,12 @@ import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.verticalScroll
+import fr.heroverlook.data.displayName
+import fr.heroverlook.data.latLon
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Lock
@@ -59,9 +65,34 @@ import fr.heroverlook.data.stats
 @Composable
 fun SiteScreen(vm: AppVM, id: String) {
     val s = vm.sites[id] ?: return
+    val ctx = LocalContext.current
     val st = s.stats()
     val layoutFilled = s.layout.deviations.size + s.layout.photos.size
     val confirmDelete = remember { mutableStateOf(false) }
+    val menuOpen = remember { mutableStateOf(false) }
+    val swapOpen = remember { mutableStateOf(false) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) vm.export(uri, id)
+    }
+
+    // Garde-fou « bon site ? » : si la permission est déjà accordée, on compare ta position à celle du site (sans rien demander).
+    val here = remember(id) { mutableStateOf<fr.heroverlook.data.LatLon?>(null) }
+    val hereAcc = remember(id) { mutableStateOf(0f) }
+    val hereNote = remember(id) { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(id) {
+        val granted = ctx.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            ctx.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted && s.latLon() != null) {
+            requestLocation(ctx) { r ->
+                if (r is LocationResult.Ok) {
+                    here.value = fr.heroverlook.data.LatLon(r.lat, r.lon)
+                    hereAcc.value = r.accuracy
+                    hereNote.value = r.note
+                }
+            }
+        }
+    }
+    if (swapOpen.value) SwapDialog(vm, s) { swapOpen.value = false }
     if (confirmDelete.value) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmDelete.value = false },
@@ -88,11 +119,55 @@ fun SiteScreen(vm: AppVM, id: String) {
         subtitle = s.id,
         onBack = vm::back,
         actions = {
-            androidx.compose.material3.IconButton(onClick = { confirmDelete.value = true }) {
-                Icon(Icons.Outlined.Delete, "Supprimer le site")
+            androidx.compose.foundation.layout.Box {
+                androidx.compose.material3.IconButton(onClick = { menuOpen.value = true }) {
+                    Icon(Icons.Outlined.MoreVert, "Menu du site")
+                }
+                androidx.compose.material3.DropdownMenu(expanded = menuOpen.value, onDismissRequest = { menuOpen.value = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Exporter ce site (ZIP)") }, onClick = {
+                        menuOpen.value = false
+                        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.US).format(java.util.Date())
+                        exportLauncher.launch("HerOverlook_${fr.heroverlook.data.SiteStore.safeName(id)}_$stamp.zip")
+                    })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Échanger le relevé avec un autre site…") }, onClick = {
+                        menuOpen.value = false
+                        swapOpen.value = true
+                    })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("Supprimer le site…") }, onClick = {
+                        menuOpen.value = false
+                        confirmDelete.value = true
+                    })
+                }
             }
         },
     ) {
+        // Position : bon site ? (affiché seulement si la position est connue et assez précise)
+        val h = here.value
+        val me = s.latLon()
+        if (h != null && me != null && hereAcc.value <= 1500f) {
+            val d = fr.heroverlook.data.TourPlanner.km(h, me)
+            val nearest = vm.sites.values.filter { it.id != id }
+                .mapNotNull { o -> o.latLon()?.let { p -> o to fr.heroverlook.data.TourPlanner.km(h, p) } }
+                .minByOrNull { it.second }
+            val stale = hereNote.value?.let { " (${it})" } ?: ""
+            if (d <= 1.0) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.MyLocation, null, tint = Verdict.OK.color(), modifier = Modifier.size(18.dp))
+                    Text("Sur place : à ${fr.heroverlook.data.TourPlanner.fmtDist(d)} de ce site$stale", style = MaterialTheme.typography.labelLarge, color = Verdict.OK.color())
+                }
+            } else {
+                Panel(accent = Verdict.RESERVE.color()) {
+                    Text("Tu es à ${fr.heroverlook.data.TourPlanner.fmtDist(d)} de ce site$stale", style = MaterialTheme.typography.titleSmall)
+                    Text("Vérifie que c'est bien le bon site avant de saisir.", style = MaterialTheme.typography.bodySmall)
+                    if (nearest != null && nearest.second < d && nearest.second < 1.5) {
+                        OutlinedButton(onClick = { vm.replaceTop("site/${nearest.first.id}") }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Ouvrir ${nearest.first.displayName()} (${fr.heroverlook.data.TourPlanner.fmtDist(nearest.second)})")
+                        }
+                    }
+                }
+            }
+        }
+
         // En-tête : l'essentiel sur deux lignes ; le détail de l'inventaire est replié.
         Panel(accent = statusColor(s.status)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,6 +279,53 @@ fun SiteScreen(vm: AppVM, id: String) {
             vm,
         )
     }
+}
+
+/** Choix du site avec lequel échanger le relevé (erreur de saisie : le mauvais site a été rempli). */
+@Composable
+private fun SwapDialog(vm: AppVM, site: Site, onDismiss: () -> Unit) {
+    val target = remember { mutableStateOf<String?>(null) }
+    val others = vm.sites.values.filter { it.id != site.id }.sortedWith(compareBy({ it.kind != site.kind }, { it.id }))
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Échanger le relevé") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Le relevé saisi sur « ${site.displayName()} » (photos, check-list, baies, plan…) passe sur le site choisi, et inversement. " +
+                        "L'identité des sites (adresse, données connues) ne change pas ; les validations « déjà connu » sont remises à zéro. " +
+                        "Pense à exporter avant.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Column(Modifier.heightIn(max = 260.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                    others.forEach { o ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { target.value = o.id },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            androidx.compose.material3.RadioButton(selected = target.value == o.id, onClick = { target.value = o.id })
+                            KindBadge(o.kind)
+                            Text(o.displayName(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 2)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(
+                enabled = target.value != null,
+                onClick = {
+                    val t = target.value
+                    if (t != null) {
+                        onDismiss()
+                        vm.swapReleve(site.id, t)
+                    }
+                },
+            ) { Text("Échanger") }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Annuler") } },
+    )
 }
 
 private fun accessSummary(s: Site): String =

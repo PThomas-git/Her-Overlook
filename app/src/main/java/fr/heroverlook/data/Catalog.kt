@@ -180,6 +180,10 @@ fun Site.stats(): Stats {
     return Stats(items.size, answered, ok, reserve, nc)
 }
 
+object RackOwners {
+    val all = listOf("HTel", "Tiers")
+}
+
 object RackKinds {
     val all = listOf("Active", "Énergie", "Batteries", "Optique / ODF", "TGBT", "Armoire ADR", "Emplacement vide", "Autre")
 }
